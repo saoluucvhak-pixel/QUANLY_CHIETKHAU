@@ -405,15 +405,15 @@ function callServerFn_(fnName, args){
       [fnName](...args);
   });
 }
-// Gọi tuần tự, tự động thử lại nếu lỗi hoặc kết quả rỗng bất thường — dùng ĐÚNG cách gọi "1 lần,
-// đợi, rồi gọi tiếp" đã được kiểm chứng ổn định 10/10 qua nút "Test kết nối cơ bản".
-function callServerFnRetry_(fnName, isEmpty, maxRetries, delayMs, args){
+// TỐI ƯU: gộp chung 3 vòng lặp "thử lại" gần như giống hệt nhau (cho hàm không tham số, hàm có
+// offset/limit, hàm đếm dòng) thành 1 hàm dùng chung duy nhất — nhận vào 1 hàm gọi Promise bất kỳ.
+function retryCall_(invokeFn, isEmpty, maxRetries, delayMs){
   maxRetries = maxRetries==null ? 2 : maxRetries;
   delayMs = delayMs==null ? 1200 : delayMs;
   let attempt = 0;
   function tryOnce(){
     attempt++;
-    return callServerFn_(fnName, args)
+    return invokeFn()
       .then(res => {
         let empty = false;
         try { empty = isEmpty ? isEmpty(res) : false; } catch(e) { empty = true; }
@@ -430,6 +430,11 @@ function callServerFnRetry_(fnName, isEmpty, maxRetries, delayMs, args){
       });
   }
   return tryOnce();
+}
+// Gọi tuần tự, tự động thử lại nếu lỗi hoặc kết quả rỗng bất thường — dùng ĐÚNG cách gọi "1 lần,
+// đợi, rồi gọi tiếp" đã được kiểm chứng ổn định 10/10 qua nút "Test kết nối cơ bản".
+function callServerFnRetry_(fnName, isEmpty, maxRetries, delayMs, args){
+  return retryCall_(() => callServerFn_(fnName, args), isEmpty, maxRetries, delayMs);
 }
 function fullReloadFromSheet(resolve, reject){
   // THEO Ý KIẾN NGƯỜI DÙNG: lúc mở app chỉ tải phần NHẸ (danh mục nhỏ + chương trình chiết khấu —
@@ -465,28 +470,7 @@ function callChunkFn_(chunkFnName, offset, limit){
   });
 }
 function callChunkFnRetry_(chunkFnName, offset, limit, isEmpty, maxRetries, delayMs){
-  maxRetries = maxRetries==null ? 2 : maxRetries;
-  delayMs = delayMs==null ? 1200 : delayMs;
-  let attempt = 0;
-  function tryOnce(){
-    attempt++;
-    return callChunkFn_(chunkFnName, offset, limit)
-      .then(res => {
-        let empty = false;
-        try { empty = isEmpty ? isEmpty(res) : false; } catch(e) { empty = true; }
-        if (empty && attempt <= maxRetries) {
-          return new Promise(r => setTimeout(r, delayMs)).then(tryOnce);
-        }
-        return res;
-      })
-      .catch(err => {
-        if (attempt <= maxRetries) {
-          return new Promise(r => setTimeout(r, delayMs)).then(tryOnce);
-        }
-        throw err;
-      });
-  }
-  return tryOnce();
+  return retryCall_(() => callChunkFn_(chunkFnName, offset, limit), isEmpty, maxRetries, delayMs);
 }
 // Tương tự cho hàm đếm tổng dòng (không tham số, nhưng để đồng bộ cách gọi tường minh luôn)
 function callCountFn_(countFnName){
@@ -498,17 +482,7 @@ function callCountFn_(countFnName){
   });
 }
 function callCountFnRetry_(countFnName, maxRetries, delayMs){
-  maxRetries = maxRetries==null ? 2 : maxRetries;
-  delayMs = delayMs==null ? 1200 : delayMs;
-  let attempt = 0;
-  function tryOnce(){
-    attempt++;
-    return callCountFn_(countFnName).catch(err => {
-      if (attempt <= maxRetries) return new Promise(r => setTimeout(r, delayMs)).then(tryOnce);
-      throw err;
-    });
-  }
-  return tryOnce();
+  return retryCall_(() => callCountFn_(countFnName), null, maxRetries, delayMs);
 }
 // Tải 1 sheet lớn theo TỪNG GÓI NHỎ (chunk), gọi lần lượt cho tới khi đủ — mỗi gói luôn nhỏ, không
 // bao giờ đủ lớn để bị lỗi truyền qua kênh giao tiếp iframe của Apps Script. onProgress(loaded, total)
@@ -866,13 +840,18 @@ function renderShell(){
     dashboard:['Tổng quan','Tình hình chương trình chiết khấu & dữ liệu mua hàng (Đồng bộ Drive)'],
     catalog:['Danh mục nhóm chiết khấu','Khai báo thương hiệu, nhóm hàng, loại SP và gắn mã hàng vào nhóm chiết khấu'],
     giacongbo:['Giá công bố nhà cung cấp','Khai báo giá công bố theo từng mã hàng (theo thông báo NCC) để tính chiết khấu % theo giá công bố'],
-    programs:['Chương trình chiết khấu','Khai báo chính sách chiết khấu theo thông báo của nhà cung cấp'],
+    chuongtrinh:['Danh mục chương trình','Tầng 1 — khai báo chương trình (mã, nội dung, thời hạn), chứa nhiều mã chiết khấu con bên dưới'],
+    programs:['Mã chiết khấu','Tầng 2 — khai báo mã chiết khấu theo thông báo NCC, có thể liên kết vào 1 chương trình và có nhiều bậc điều kiện con'],
     luyke:['Chiết khấu lũy kế','Khai báo điều kiện chiết khấu thưởng thêm khi đạt đủ các tháng lũy kế của 1 chương trình chính'],
     purchases:['Sổ chi tiết mua hàng','Nạp dữ liệu mua hàng (từ Excel / Google Sheet) để đối chiếu chiết khấu'],
     doichieu:['Đối chiếu Giá mua - Giá công bố','So sánh giá mua thực tế bình quân với giá công bố NCC theo từng mặt hàng và từng phiếu mua hàng'],
     report:['Tính chiết khấu','Tính chiết khấu thực tế đạt được theo từng kỳ, đối chiếu chương trình đã khai báo'],
     baocao:['Báo cáo chiết khấu','Phân tích tổng hợp từ dữ liệu đã lưu (REPORT_CKTH/CKCT): theo mặt hàng, theo mã chiết khấu, bảng hạch toán, đối chiếu nhiều kỳ liền kề'],
   };
+  // SỬA LỖI: nếu UI.tab không khớp đúng key nào trong titles (VD do bản JS cũ còn lưu trong bộ nhớ
+  // trình duyệt chưa nạp lại, hoặc tab id gõ sai) — trước đây "titles[UI.tab][0]" sẽ crash TOÀN BỘ
+  // renderShell(), làm trắng cả trang chứ không chỉ riêng tab đó. Nay có giá trị dự phòng an toàn.
+  const curTitle = titles[UI.tab] || ['Chiết khấu NCC', ''];
   document.getElementById('app').innerHTML = `
     <div class="sidebar">
       <div class="brand">
@@ -899,7 +878,7 @@ function renderShell(){
     </div>
     <div class="main">
       <div class="topbar">
-        <div><h1>${titles[UI.tab][0]}</h1><div class="desc">${titles[UI.tab][1]}</div></div>
+        <div><h1>${curTitle[0]}</h1><div class="desc">${curTitle[1]}</div></div>
         <div class="btn-row" id="topbarActions"></div>
       </div>
       <div class="content" id="content"></div>
@@ -908,6 +887,8 @@ function renderShell(){
   document.querySelectorAll('[data-nav]').forEach(el=>{
     el.addEventListener('click', ()=>{ UI.tab = el.dataset.nav; renderShell(); routeContent(); });
   });
+  // Nếu UI.tab bị lệch không hợp lệ, tự đưa về "dashboard" để không kẹt ở trang trắng mãi
+  if(!titles[UI.tab]) UI.tab = 'dashboard';
   routeContent();
 }
 function loadingPane_(msg){
@@ -970,7 +951,6 @@ function lookupItemDims(mahang, map){
     matched:true, tenhang:rec.tenhang||null
   };
 }
-function buildKeyStr(dims){ return DIM_KEYS.map(k=>norm(dims[k])||'NO').join('_'); }
 function dimsLabel(dims){
   const parts = DIM_KEYS.map(k=>{
     const v = dims[k];
@@ -978,9 +958,6 @@ function dimsLabel(dims){
     return dimName(k, v);
   }).filter(Boolean);
   return parts.length ? parts.join(' · ') : 'Tất cả (không phân biệt)';
-}
-function specificity(dims){
-  return DIM_KEYS.reduce((n,k)=> n + (norm(dims[k])!=='NO' && dims[k] ? 1 : 0), 0);
 }
 function dimsMatch(itemDims, ruleDims) {
   // itemDims là thuộc tính của sản phẩm (ví dụ: 'TBR', 'BIAS') — LUÔN là 1 giá trị cụ thể
@@ -2004,10 +1981,12 @@ window.deleteChuongTrinhRow = async (idx)=>{
 
 function renderPrograms(){
   document.getElementById('topbarActions').innerHTML = `
+    <button class="btn" id="btnImportProg">${ICON.upload} Tải file Mã chiết khấu (.xlsx)</button>
     <button class="btn" id="btnImportDK">${ICON.upload} Tải file Bậc điều kiện (.xlsx)</button>
     <button class="btn" id="btnExportProg">${ICON.download} Xuất Excel</button>
     <button class="btn btn-primary" onclick="openProgramForm()">${ICON.plus} Thêm mã chiết khấu</button>
   `;
+  document.getElementById('btnImportProg').onclick = () => triggerFileImport(handleProgramsFile);
   document.getElementById('btnExportProg').onclick = exportProgramsXlsx;
   document.getElementById('btnImportDK').onclick = () => triggerFileImport(handleDieuKienFile);
 
@@ -2444,7 +2423,7 @@ function openLuyKeForm(idx){
   const kt = row.kieu_tinh || 'all_or_reduced';
   openModal(`
     <h3>${idx!=null?'Sửa':'Thêm'} chương trình chiết khấu lũy kế</h3>
-    <div class="field"><label>Mã chương trình chiết khấu chính</label>
+    <div class="field"><label>Mã chiết khấu chính</label>
       <select id="lk_ma_ck_chinh"><option value="">— Chọn chương trình chính —</option>${chinhOptions}</select>
     </div>
     ${monthCheckboxBox('lk', row.thang_luyke)}
@@ -2544,36 +2523,6 @@ window.deleteLuyKeRow = async (idx)=>{
   DB.programsLuyKe.splice(idx,1);
   await saveLuyKe(); toast('Đã xóa','ok'); renderLuyKe();
 };
-async function handleLuyKeFile(file){
-  try{
-    const wb = await readWorkbook(file);
-    const ws = findSheet(wb, ['CHUONGTRINHCHIETKHAU_LUYKE','LUYKE']) || wb.Sheets[wb.SheetNames[0]];
-    const data = XLSX.utils.sheet_to_json(ws, {defval:''});
-    let added=0, skipped=0;
-    data.forEach(row=>{
-      const maChinh = String(getVal(row, ['Mã CT chính','MA_CT_CHINH'])||'').trim();
-      const baseProg = DB.programs.find(p=>norm(p.ma_chietkhau)===norm(maChinh));
-      const thang = String(getVal(row,['Tháng lũy kế','THANG_LUYKE'])||'').trim();
-      if(!baseProg || !thang){ skipped++; return; }
-      DB.programsLuyKe.push({
-        id: uid(), ma_ck_chinh: baseProg.id, thang_luyke: thang,
-        thoidiem_ck: getVal(row,['Thời điểm CK','THOIDIEM_CK']) || 'Tháng',
-        sl_min: cleanExcelNumber(getVal(row,['SL_MIN'])), sl_max: cleanExcelNumber(getVal(row,['SL_MAX'])),
-        dt_min: cleanExcelNumber(getVal(row,['DT_MIN'])), dt_max: cleanExcelNumber(getVal(row,['DT_MAX'])),
-        dt_kehoach: cleanExcelNumber(getVal(row,['DT_KEHOACH'])),
-        pct_kh_min: cleanExcelNumber(getVal(row,['PCT_KH_MIN'])), pct_kh_max: cleanExcelNumber(getVal(row,['PCT_KH_MAX'])),
-        ck_bosung: cleanExcelNumber(getVal(row,['CK_BOSUNG'])),
-        tt_ck_bosung: guessTTCK(getVal(row,['TT_CK_BOSUNG'])),
-        hieuluctu: excelDateToISO(getVal(row,['Hiệu lực từ ngày'])),
-        hieulucden: excelDateToISO(getVal(row,['Hiệu lực đến ngày']))
-      });
-      added++;
-    });
-    await saveLuyKe();
-    toast(`Đã nạp ${added} chương trình lũy kế${skipped?`, bỏ qua ${skipped} dòng không khớp CT chính/thiếu Tháng lũy kế`:''}`, 'ok');
-    renderLuyKe();
-  }catch(err){ toast('Lỗi đọc tệp: ' + err.message, 'err'); }
-}
 function exportLuyKeXlsx(){
   const rows = DB.programsLuyKe.map(lk=>{
     const bp = DB.programs.find(p=>p.id===lk.ma_ck_chinh);
@@ -3416,7 +3365,7 @@ function renderReport(){
       </div>
       <div class="grid grid-2" style="margin-top:12px">
         <div class="field" style="margin:0">
-          <label>Chương trình chiết khấu</label>
+          <label>Mã chiết khấu</label>
           <select id="rf_program">
             <option value="">Tất cả (có thể ra nhiều dòng / 1 nhóm SP)</option>
             ${DB.programs.map(p=>`<option value="${esc(p.id)}" ${rf.program===p.id?'selected':''}>${esc(p.ma_chietkhau)} (${fmtDate(p.hieuluctu)}→${fmtDate(p.hieulucden)})</option>`).join('')}
@@ -3593,7 +3542,7 @@ async function autoRunAndSaveMonthsForLuyKe(){
         pct_ht_kh_dt: progRow.hoanthanh!=null ? Number(progRow.hoanthanh.toFixed(2)) : '',
         pct_ht_kh_sl: pctHtSl!=null ? Number(pctHtSl.toFixed(2)) : '',
         hinh_thuc_chietkhau: progRow.htChietkhau || '',
-        chiet_khau: baseProg.tl_ck || '', so_tien_chietkhau: progRow.tienck,
+        chiet_khau: (progRow.program.tl_ck || progRow.program.dongia_codinh) || '', so_tien_chietkhau: progRow.tienck,
         thang_chietkhau: m, nam_chietkhau: year,
         trangthai: progRow.dat ? 'DAT' : 'CHUA_DAT'
       }];
@@ -4332,6 +4281,7 @@ async function handleProgramsFile(file){
       DB.programs.push({
         id: uid(),
         ngaytao: excelDateToISO(getVal(row,['Ngày tạo'])) || todayISO(),
+        chuongtrinh_id: '', // Import trực tiếp -> chưa liên kết chương trình Tầng 1, có thể gán sau
         hieuluctu, hieulucden,
         ...dims, ma_chietkhau: maCK || DIM_KEYS.map(k=>dims['dim_'+k]).join('_'),
         sl_min: cleanExcelNumber(getVal(row,['SL_MIN'])), sl_max: cleanExcelNumber(getVal(row,['SL_MAX'])),

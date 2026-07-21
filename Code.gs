@@ -113,12 +113,7 @@ function loadCoreData() {
   result.version = getDataVersion();
   return result;
 }
-function loadGiaCongBoData() {
-  return Object.assign(readSheetRowsCompact_(SHEETS.GIACONGBO), { version: getDataVersion() });
-}
-function loadPurchasesData() {
-  return Object.assign(readSheetRowsCompact_(SHEETS.PURCHASES), { version: getDataVersion() });
-}
+
 // SỬA LỖI (chia nhỏ gói truyền): dù đã dùng định dạng gọn, gói 1.435 dòng vẫn có thể bị hỏng/rỗng khi
 // truyền qua kênh giao tiếp iframe của Apps Script (hiện tượng đã biết, không báo lỗi rõ ràng). Nay
 // cho phép tải THEO TỪNG GÓI NHỎ (offset/limit) — Frontend gọi nhiều lần liên tiếp, mỗi lần chỉ vài
@@ -153,26 +148,6 @@ function loadGiaCongBoChunk(offset, limit) { return readSheetChunk_(SHEETS.GIACO
 // (1.400+ dòng x 16 cột), tên cột bị LẶP LẠI trong JSON ở MỖI dòng, làm gói tin nặng hơn nhiều so với
 // cần thiết, dễ bị ngắt/timeout trên đường truyền chậm. Nay dùng định dạng GỌN: gửi tên cột 1 LẦN DUY
 // NHẤT (headers), dữ liệu chỉ là mảng giá trị thuần (rows) — Frontend tự ráp lại thành object.
-function readSheetRowsCompact_(sheetName) {
-  const ss = SpreadsheetApp.getActive();
-  Logger.log('readSheetRowsCompact_: spreadsheet=' + ss.getName() + ' looking for sheet=' + sheetName);
-  let sh = ss.getSheetByName(sheetName);
-  if (!sh) {
-    Logger.log('readSheetRowsCompact_: sheet NOT FOUND by exact name, creating new empty sheet: ' + sheetName);
-    sh = ss.insertSheet(sheetName);
-  }
-  const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
-  Logger.log('readSheetRowsCompact_: found sheet "' + sh.getName() + '", lastRow=' + lastRow + ', lastCol=' + lastCol);
-  const data = sh.getDataRange().getValues();
-  Logger.log('readSheetRowsCompact_: getDataRange().getValues() returned ' + data.length + ' rows');
-  if (data.length <= 1) return { headers: [], rows: [] };
-  const headers = data[0];
-  const rows = data.slice(1)
-    .filter(r => r.some(c => String(c).trim() !== ''))
-    .map(r => r.map(c => sanitizeCellValue_(c)));
-  Logger.log('readSheetRowsCompact_: after filtering blank rows, ' + rows.length + ' data rows remain');
-  return { headers: headers, rows: rows };
-}
 function loadAllData() {
   const core = loadCoreData();
   core.catalog.giacongbo = readSheetRows_(SHEETS.GIACONGBO);
