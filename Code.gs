@@ -6,14 +6,47 @@ const SHEETS = {
   LUYKE: 'CHUONGTRINHCHIETKHAU_LUYKE', REPORT_CKTH: 'REPORT_CKTH', REPORT_CKCT: 'REPORT_CKCT',
   // THEO MÔ HÌNH 3 TẦNG MỚI: Tầng 1 (Danh mục chương trình) + Tầng 3 (Bậc điều kiện con của mỗi mã
   // chiết khấu). Tầng 2 (mã chiết khấu) vẫn dùng đúng sheet PROGRAMS cũ, chỉ bổ sung thêm cột liên kết.
-  CHUONGTRINH: 'DM_CHUONGTRINH', DIEUKIEN: 'DM_DIEUKIEN'
+  CHUONGTRINH: 'DM_CHUONGTRINH', DIEUKIEN: 'DM_DIEUKIEN',
+  // MỚI: Danh mục tổng hợp doanh thu sản lượng (Mã doanh thu) + Danh mục kế hoạch doanh thu
+  DOANHTHU: 'DM_DOANHTHU', KEHOACH: 'DM_KEHOACH', KEHOACH_CHITIET: 'DM_KEHOACH_CHITIET'
 };
 
 function doGet() {
+  checkAccess_();
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Quản lý Chiết khấu NCC')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+// ===== KIỂM SOÁT QUYỀN TRUY CẬP (TUỲ CHỌN, TẮT MẶC ĐỊNH) =====
+// Mặc định: KHÔNG giới hạn gì (giữ đúng hành vi cũ, không phá vỡ ứng dụng đang chạy).
+// Để BẬT giới hạn theo email: mở Apps Script editor -> Project Settings -> Script Properties
+// -> thêm property "ALLOWED_EMAILS" với giá trị là danh sách email được phép, phân tách bởi dấu phẩy
+// (VD: "an@congty.com, binh@congty.com"). Khi property này có giá trị, mọi lượt mở app (doGet) và mọi
+// lượt LƯU dữ liệu (qua withLock_) đều bị chặn nếu người dùng không có trong danh sách.
+// LƯU Ý QUAN TRỌNG (giới hạn của chính nền tảng Apps Script, không thể vượt qua bằng code):
+// Session.getActiveUser().getEmail() CHỈ trả về đúng email khi Web App được deploy với
+// "Execute as: User accessing the web app" VÀ người dùng thuộc cùng Google Workspace domain với người
+// deploy (hoặc file được chia sẻ trực tiếp cho họ). Nếu deploy "Execute as: Me" (mặc định phổ biến),
+// hàm này luôn trả về chuỗi rỗng — khi đó, để an toàn, checkAccess_() sẽ TỪ CHỐI truy cập luôn (thay vì
+// âm thầm cho qua) một khi đã bật ALLOWED_EMAILS, kèm thông báo rõ nguyên nhân để người quản trị biết
+// cách xử lý (đổi chế độ deploy), tránh ảo tưởng là "đã có bảo mật" trong khi thực chất không kiểm
+// tra được danh tính.
+function checkAccess_() {
+  const allowedRaw = PropertiesService.getScriptProperties().getProperty('ALLOWED_EMAILS');
+  if (!allowedRaw) return; // Chưa cấu hình -> không giới hạn, giữ nguyên hành vi mặc định
+  const allowed = allowedRaw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (!allowed.length) return;
+  let email = '';
+  try { email = (Session.getActiveUser().getEmail() || '').toLowerCase(); } catch (e) {}
+  if (!email) {
+    throw new Error('Không xác định được danh tính người dùng để kiểm tra quyền truy cập (ALLOWED_EMAILS đã bật). ' +
+      'Hãy deploy Web App với chế độ "Execute as: User accessing the web app" để tính năng này hoạt động đúng.');
+  }
+  if (allowed.indexOf(email) === -1) {
+    throw new Error('Tài khoản "' + email + '" chưa được cấp quyền truy cập ứng dụng này. Liên hệ quản trị viên nếu cần được cấp quyền.');
+  }
 }
 
 // ===== CHẨN ĐOÁN KẾT NỐI: cho biết chính xác script đang đọc file/sheet nào, để phát hiện
@@ -67,12 +100,36 @@ function bumpDataVersion_() {
 // Chuyển 1 giá trị ô về dạng an toàn để gửi qua google.script.run
 // (Sheet có thể trả về đối tượng Date "invalid" khi ô định dạng ngày nhưng để trống -> gây lỗi
 // "Cannot return an invalid date" khi Apps Script serialize JSON để gửi về trình duyệt)
-function sanitizeCellValue_(v) {
+// SỬA LỖI QUAN TRỌNG: Google Sheet đôi khi TỰ ĐỘNG định dạng nhầm 1 cột SỐ (VD cột "Giá công bố")
+// thành định dạng NGÀY THÁNG — thường xảy ra khi dán dữ liệu, hoặc Sheet "đoán" định dạng theo 1 vài ô
+// trông giống ngày tháng trong cùng cột. Khi đó sh.getRange(...).getValues() trả về 1 đối tượng Date()
+// thay vì con số thật, dù giá trị ô KHÔNG hề thay đổi. Nếu vẫn convert Date -> chuỗi "yyyy-MM-dd" như
+// trước đây một cách MÙ QUÁNG, cột Giá công bố sẽ nhận được chuỗi kiểu "2026-07-24" thay vì con số giá
+// -> khi Frontend Number("2026-07-24") sẽ ra NaN -> hiển thị/tính toán ra 0đ, sai hoàn toàn.
+// Nay sanitizeCellValue_ nhận biết luôn TÊN CỘT (header): nếu tên cột KHÔNG nằm trong danh sách các cột
+// ngày tháng THẬT SỰ của app (DATE_FIELD_NAMES_ bên dưới), một giá trị Date() nhận được sẽ bị coi là LỖI
+// ĐỊNH DẠNG và được CHUYỂN NGƯỢC LẠI thành đúng con số gốc (số ngày kể từ mốc 30/12/1899 — công thức
+// serial date chuẩn của Google Sheets/Excel), giữ đúng giá trị số ban đầu người dùng đã nhập.
+const DATE_FIELD_NAMES_ = new Set([
+  'ngay', 'tu_ngay', 'den_ngay', 'hieuluctu', 'hieulucden', 'ngaylap', 'ngay_tinh', 'ngaytao'
+]);
+function serialFromDate_(d) {
+  // Mốc gốc serial date của Google Sheets/Excel là 30/12/1899 — dùng đúng constructor Date() cục bộ
+  // (không phải UTC) để khớp với cách Apps Script quy đổi Date() từ serial number khi đọc cell.
+  const epoch = new Date(1899, 11, 30);
+  return Math.round((d.getTime() - epoch.getTime()) / 86400000 * 1e6) / 1e6; // làm tròn nhẹ, tránh sai số dấu phẩy động
+}
+function sanitizeCellValue_(v, header) {
   // SỬA LỖI: đối tượng Date lồng trong mảng lớn có thể bị lỗi/hỏng khi truyền qua google.script.run
   // (lỗi đã biết của Apps Script). Nay luôn chuyển Date thành CHUỖI TEXT (yyyy-MM-dd) trước khi gửi,
   // áp dụng thống nhất ở đây cho mọi hàm đọc dữ liệu — tránh hoàn toàn kiểu Date trong gói tin RPC.
   if (v instanceof Date) {
     if (isNaN(v.getTime())) return '';
+    const key = String(header || '').trim().toLowerCase();
+    if (!DATE_FIELD_NAMES_.has(key)) {
+      // Cột này KHÔNG phải cột ngày tháng thật -> đây là lỗi định dạng ô, trả về ĐÚNG CON SỐ gốc.
+      return serialFromDate_(v);
+    }
     return Utilities.formatDate(v, Session.getScriptTimeZone() || 'GMT+7', 'yyyy-MM-dd');
   }
   return v;
@@ -86,21 +143,82 @@ function sanitizeCellValue_(v) {
 // trên Sheet — đúng hiện tượng "chập chờn" quan sát được (chẩn đoán ra đủ dữ liệu, làm mới lại ra 0).
 // Nay tách thành 3 lượt gọi NHỎ hơn để giảm rủi ro timeout, và cho phép Frontend tự thử lại riêng
 // từng phần nếu phần đó bị rỗng bất thường, thay vì phải tải lại toàn bộ.
-function readSheetRows_(sheetName) {
-  const ss = SpreadsheetApp.getActive();
+// TỐI ƯU: gộp chung đoạn "lấy sheet theo tên, tự tạo mới nếu chưa có" — lặp lại giống hệt nhau ở
+// nhiều hàm đọc dữ liệu khác nhau.
+function getOrCreateSheet_(ss, sheetName) {
   let sh = ss.getSheetByName(sheetName);
   if (!sh) sh = ss.insertSheet(sheetName);
+  return sh;
+}
+
+// ===== KHOÁ ĐỒNG THỜI (LockService) =====
+// SỬA LỖI NGHIÊM TRỌNG: trước đây mọi hàm lưu (saveSheetData, appendOrUpsertRows_...) đều ĐỌC toàn
+// sheet -> XOÁ -> GHI LẠI mà không có khoá. Nếu 2 người dùng bấm lưu gần như đồng thời (VD cùng sửa
+// Danh mục hoặc cùng lưu Báo cáo), người ghi SAU sẽ ghi đè mất hoàn toàn thay đổi của người ghi TRƯỚC
+// — không có lỗi, không cảnh báo, mất dữ liệu âm thầm. Nay mọi điểm vào (entry point) có thể được gọi
+// từ Frontend để LƯU dữ liệu đều được bọc qua withLock_(): dùng LockService.getScriptLock() để đảm bảo
+// tại một thời điểm chỉ có DUY NHẤT 1 lượt lưu được thực thi, các lượt gọi khác phải đợi tới lượt.
+// Đồng thời kiểm tra quyền truy cập (nếu ALLOWED_EMAILS đã bật) ngay tại đây để bảo vệ luôn đường ghi.
+function withLock_(fn, waitMs) {
+  checkAccess_();
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(waitMs == null ? 30000 : waitMs);
+  } catch (e) {
+    throw new Error('Hệ thống đang bận xử lý một lượt lưu khác từ người dùng khác, vui lòng thử lại sau vài giây.');
+  }
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ===== GHI SHEET TỐI ƯU (giảm rủi ro timeout khi sheet đã lớn và tăng dần theo thời gian) =====
+// TRƯỚC ĐÂY: mỗi lần lưu đều clearContents() TOÀN BỘ sheet rồi appendRow(headers) + setValues() lại
+// từ đầu — với các sheet lớn và ngày càng phình to (Mua hàng, Giá công bố), thao tác "xoá sạch rồi ghi
+// lại từ đầu" tốn nhiều thời gian máy chủ hơn cần thiết, đúng nguyên nhân timeout đã được vá tạm bằng
+// cách tải/ghi theo chunk ở các nơi khác. NAY: ghi ĐÈ TRỰC TIẾP lên đúng vùng dữ liệu mới (setValues),
+// chỉ dọn phần "thừa" còn sót lại từ dữ liệu CŨ nếu dữ liệu mới ít dòng/cột hơn dữ liệu cũ trước đó —
+// với trường hợp phổ biến nhất (dữ liệu ngày càng nhiều lên, không co lại), hoàn toàn không cần bước
+// dọn thừa nào, giảm đáng kể số thao tác đọc/ghi so với cách "xoá sạch rồi ghi lại" trước đây.
+function writeRowsEfficient_(sh, headers, values) {
+  const oldLastRow = sh.getLastRow();
+  const oldLastCol = sh.getLastColumn();
+  const newRowCount = values.length;
+  const newColCount = headers.length;
+  if (newColCount > 0) {
+    sh.getRange(1, 1, 1, newColCount).setValues([headers]);
+    if (newRowCount > 0) {
+      sh.getRange(2, 1, newRowCount, newColCount).setValues(values);
+    }
+  } else {
+    sh.clearContents();
+    return;
+  }
+  // Dọn phần dòng thừa còn sót lại (dữ liệu mới ít dòng hơn dữ liệu cũ)
+  if (oldLastRow > newRowCount + 1) {
+    sh.getRange(newRowCount + 2, 1, oldLastRow - (newRowCount + 1), Math.max(oldLastCol, newColCount)).clearContent();
+  }
+  // Dọn phần cột thừa còn sót lại (dữ liệu mới ít cột hơn dữ liệu cũ)
+  if (oldLastCol > newColCount) {
+    sh.getRange(1, newColCount + 1, Math.max(newRowCount + 1, 1), oldLastCol - newColCount).clearContent();
+  }
+}
+function readSheetRows_(sheetName) {
+  const ss = SpreadsheetApp.getActive();
+  const sh = getOrCreateSheet_(ss, sheetName);
   const data = sh.getDataRange().getValues();
   if (data.length <= 1) return [];
   const headers = data[0];
   return data.slice(1).map(r => {
     let obj = {};
-    headers.forEach((h, i) => obj[h] = sanitizeCellValue_(r[i]));
+    headers.forEach((h, i) => obj[h] = sanitizeCellValue_(r[i], h));
     return obj;
   });
 }
 function loadCoreData() {
-  const result = { catalog: {}, programs: [], programsLuyKe: [], reportCKTH: [], reportCKCT: [], chuongtrinh: [], dieukien: [] };
+  const result = { catalog: {}, programs: [], programsLuyKe: [], reportCKTH: [], reportCKCT: [], chuongtrinh: [], dieukien: [], doanhthu: [], kehoach: [], kehoachChiTiet: [] };
   ['THUONGHIEU','NHOMKH','LOAISP','DACTINH','CONGDUNG','QUYCACH','MHCK'].forEach(key => {
     result.catalog[key.toLowerCase()] = readSheetRows_(SHEETS[key]);
   });
@@ -109,7 +227,12 @@ function loadCoreData() {
   result.reportCKTH = readSheetRows_(SHEETS.REPORT_CKTH);
   result.reportCKCT = readSheetRows_(SHEETS.REPORT_CKCT);
   result.chuongtrinh = readSheetRows_(SHEETS.CHUONGTRINH);
-  result.dieukien = readSheetRows_(SHEETS.DIEUKIEN);
+  // DM_DIEUKIEN KHÔNG đọc nguyên khối ở đây nữa — Frontend tự tải riêng theo chunk qua
+  // getDieuKienRowCount()/loadDieuKienChunk() ngay sau khi gọi loadCoreData(), cùng cơ chế phòng
+  // ngừa timeout như Giá công bố/Mua hàng (xem ghi chú tại 2 hàm đó).
+  result.doanhthu = readSheetRows_(SHEETS.DOANHTHU);
+  result.kehoach = readSheetRows_(SHEETS.KEHOACH);
+  result.kehoachChiTiet = readSheetRows_(SHEETS.KEHOACH_CHITIET);
   result.version = getDataVersion();
   return result;
 }
@@ -120,16 +243,20 @@ function loadCoreData() {
 // trăm dòng, ghép lại — đảm bảo mỗi gói luôn đủ nhỏ để truyền an toàn.
 function getSheetRowCount_(sheetKey) {
   const ss = SpreadsheetApp.getActive();
-  let sh = ss.getSheetByName(SHEETS[sheetKey]);
-  if (!sh) sh = ss.insertSheet(SHEETS[sheetKey]);
+  const sh = getOrCreateSheet_(ss, SHEETS[sheetKey]);
   return { total: Math.max(0, sh.getLastRow() - 1), version: getDataVersion() };
 }
 function getPurchasesRowCount() { return getSheetRowCount_('PURCHASES'); }
 function getGiaCongBoRowCount() { return getSheetRowCount_('GIACONGBO'); }
+// TỐI ƯU (phòng ngừa): DM_DIEUKIEN (bậc điều kiện con của mã chiết khấu, Tầng 3) hiện còn nhỏ nên
+// vẫn đọc trong loadCoreData(), nhưng bổ sung sẵn cặp hàm đếm dòng + tải chunk cùng khuôn mẫu với
+// Giá công bố/Mua hàng — để Frontend có thể chuyển sang tải theo gói nhỏ ngay khi cần, không phải
+// chờ tới lúc sheet này phình to rồi mới gặp lại đúng lỗi "load 0 dữ liệu chập chờn" đã từng vá.
+function getDieuKienRowCount() { return getSheetRowCount_('DIEUKIEN'); }
+function loadDieuKienChunk(offset, limit) { return readSheetChunk_(SHEETS.DIEUKIEN, offset, limit); }
 function readSheetChunk_(sheetName, offset, limit) {
   const ss = SpreadsheetApp.getActive();
-  let sh = ss.getSheetByName(sheetName);
-  if (!sh) sh = ss.insertSheet(sheetName);
+  const sh = getOrCreateSheet_(ss, sheetName);
   const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
   if (lastRow < 2 || lastCol < 1) return { headers: [], rows: [] };
   const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
@@ -139,11 +266,59 @@ function readSheetChunk_(sheetName, offset, limit) {
   const data = sh.getRange(startRow, 1, numRows, lastCol).getValues();
   const rows = data
     .filter(r => r.some(c => String(c).trim() !== ''))
-    .map(r => r.map(c => sanitizeCellValue_(c)));
+    .map(r => r.map((c, i) => sanitizeCellValue_(c, headers[i])));
   return { headers: headers, rows: rows };
 }
 function loadPurchasesChunk(offset, limit) { return readSheetChunk_(SHEETS.PURCHASES, offset, limit); }
 function loadGiaCongBoChunk(offset, limit) { return readSheetChunk_(SHEETS.GIACONGBO, offset, limit); }
+
+// THEO YÊU CẦU: cho phép Frontend chỉ tải dữ liệu Mua hàng của MỘT SỐ Nhà cung cấp được chọn (thay vì
+// luôn tải toàn bộ ~1.400+ dòng), giảm dung lượng truyền và bộ nhớ trình duyệt phải giữ khi người dùng
+// chỉ cần xem/lọc theo 1 vài NCC cụ thể.
+
+// Lấy danh sách Nhà cung cấp DUY NHẤT — CHỈ đọc 1 cột (nhacungcap), KHÔNG đọc toàn bộ các cột khác —
+// dùng để hiển thị ô chọn NCC cho người dùng NGAY CẢ KHI chưa tải dữ liệu Mua hàng nào (tránh vòng lặp
+// "phải tải hết mới biết có NCC nào để chọn tải theo NCC").
+function getDistinctPurchaseSuppliers() {
+  const sh = getOrCreateSheet_(SpreadsheetApp.getActive(), SHEETS.PURCHASES);
+  const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return [];
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  const idx = headers.indexOf('nhacungcap');
+  if (idx < 0) return [];
+  const values = sh.getRange(2, idx + 1, lastRow - 1, 1).getValues();
+  const seen = {};
+  values.forEach(r => { const v = String(r[0] || '').trim(); if (v) seen[v] = true; });
+  return Object.keys(seen).sort();
+}
+// Đọc TOÀN BỘ dòng Mua hàng rồi LỌC theo danh sách Nhà cung cấp được chọn (so khớp không phân biệt hoa
+// thường/khoảng trắng thừa). Nếu suppliers rỗng/không truyền -> trả về TOÀN BỘ (an toàn, không lọc
+// nhầm mất dữ liệu nếu Frontend gọi thiếu tham số).
+function readFilteredPurchaseRows_(suppliers) {
+  const sh = getOrCreateSheet_(SpreadsheetApp.getActive(), SHEETS.PURCHASES);
+  const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return { headers: [], rows: [] };
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  const idx = headers.indexOf('nhacungcap');
+  const wanted = (Array.isArray(suppliers) ? suppliers : []).map(s => String(s).trim().toLowerCase()).filter(Boolean);
+  const data = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const rows = data
+    .filter(r => r.some(c => String(c).trim() !== '')) // bỏ dòng trắng
+    .filter(r => {
+      if (!wanted.length) return true; // không lọc gì -> giữ hết (an toàn, không mất dữ liệu)
+      if (idx < 0) return true; // sheet không có cột nhacungcap -> không lọc được, trả hết
+      return wanted.indexOf(String(r[idx]).trim().toLowerCase()) !== -1;
+    })
+    .map(r => r.map((c, i) => sanitizeCellValue_(c, headers[i])));
+  return { headers, rows };
+}
+function getPurchasesRowCountBySupplier(suppliers) {
+  return { total: readFilteredPurchaseRows_(suppliers).rows.length };
+}
+function loadPurchasesChunkBySupplier(suppliers, offset, limit) {
+  const all = readFilteredPurchaseRows_(suppliers);
+  return { headers: all.headers, rows: all.rows.slice(offset, offset + limit) };
+}
 // SỬA LỖI (giảm dung lượng truyền): readSheetRows_() trả về mảng OBJECT đầy đủ — với sheet lớn
 // (1.400+ dòng x 16 cột), tên cột bị LẶP LẠI trong JSON ở MỖI dòng, làm gói tin nặng hơn nhiều so với
 // cần thiết, dễ bị ngắt/timeout trên đường truyền chậm. Nay dùng định dạng GỌN: gửi tên cột 1 LẦN DUY
@@ -158,8 +333,7 @@ function loadAllData() {
 // Hàm lưu dữ liệu tổng quát
 function saveSheetData(sheetName, data) {
   const ss = SpreadsheetApp.getActive();
-  let sh = ss.getSheetByName(sheetName);
-  if (!sh) sh = ss.insertSheet(sheetName);
+  const sh = getOrCreateSheet_(ss, sheetName);
   // SỬA LỖI NGHIÊM TRỌNG: trước đây hàm này LUÔN xóa sạch (clearContents) tab rồi ghi lại, kể cả khi
   // "data" truyền vào là mảng RỖNG. saveCatalogData() gửi lên TOÀN BỘ object catalog (mọi danh mục)
   // mỗi khi lưu — kể cả khi người dùng chỉ vừa import 1 loại danh mục (VD chỉ Giá công bố). Nếu tại
@@ -172,40 +346,55 @@ function saveSheetData(sheetName, data) {
   if ((!data || data.length === 0) && existingRowCount > 0) {
     return; // Bỏ qua để bảo vệ dữ liệu đã có, không ghi đè bằng mảng rỗng
   }
-  sh.clearContents();
-  if (data && data.length > 0) {
-    const headers = Object.keys(data[0]);
-    sh.appendRow(headers);
-    const values = data.map(r => headers.map(h => r[h] ?? ''));
-    sh.getRange(2, 1, values.length, headers.length).setValues(values);
+  if (!data || data.length === 0) {
+    sh.clearContents();
+    return;
   }
+  const headers = Object.keys(data[0]);
+  const values = data.map(r => headers.map(h => r[h] ?? ''));
+  writeRowsEfficient_(sh, headers, values);
 }
 
 // Các hàm cầu nối gọi từ Frontend
 // Mỗi hàm save trả về phiên bản dữ liệu mới nhất để Frontend cập nhật cache cục bộ.
+// TỐI ƯU (SỬA LỖI HIỆU NĂNG): trước đây saveCatalogData() nhận NGUYÊN object catalog (gồm cả MHCK
+// và Giá công bố — có thể hơn 1.300 dòng) rồi ghi đè lại TẤT CẢ các sheet đó, dù người dùng chỉ vừa
+// sửa 1 dòng ở 1 danh mục nhỏ (VD Thương hiệu). Mỗi lần lưu như vậy tốn thời gian + quota Apps Script
+// để clearContents() + ghi lại toàn bộ sheet lớn không hề thay đổi, tăng rủi ro timeout không cần
+// thiết. Nay saveCatalogData() CHỈ lưu 6 danh mục nhỏ (kích thước); MHCK và Giá công bố có hàm lưu
+// RIÊNG (saveMhckData/saveGiaCongBoData) để Frontend chỉ gọi đúng phần thực sự thay đổi.
+const DIM_CATALOG_KEYS_ = ['thuonghieu', 'nhomkh', 'loaisp', 'dactinh', 'congdung', 'quycach'];
 function saveCatalogData(catalog) {
-  const ss = SpreadsheetApp.getActive();
-  
-  // Lưu bảng ánh xạ mã hàng (MHCK)
-  saveSheetData(SHEETS.MHCK, catalog.mhck);
-  
-  // Lưu tất cả các bảng danh mục phụ (thuonghieu, nhomkh, loaisp, dactinh, congdung, quycach)
-  Object.keys(catalog).forEach(key => {
-    if (key !== 'mhck') {
-      const sheetName = SHEETS[key.toUpperCase()];
-      if (sheetName) {
-        saveSheetData(sheetName, catalog[key]);
-      }
-    }
+  return withLock_(() => {
+    if (!catalog) return bumpDataVersion_();
+    DIM_CATALOG_KEYS_.forEach(key => {
+      if (catalog[key] != null) saveSheetData(SHEETS[key.toUpperCase()], catalog[key]);
+    });
+    return bumpDataVersion_();
   });
-  return bumpDataVersion_();
 }
-function saveProgramsData(data) { saveSheetData(SHEETS.PROGRAMS, data); return bumpDataVersion_(); }
-function savePurchasesData(data) { saveSheetData(SHEETS.PURCHASES, data); return bumpDataVersion_(); }
-function saveLuyKeData(data) { saveSheetData(SHEETS.LUYKE, data); return bumpDataVersion_(); }
+function saveMhckData(data) { return simpleSave_('MHCK', data); }
+function saveGiaCongBoData(data) { return simpleSave_('GIACONGBO', data); }
+// TỐI ƯU (gộp code trùng lặp): các hàm save*Data() dưới đây trước đây là các dòng lặp lại gần như
+// giống hệt nhau (saveSheetData(SHEETS.X, data); return bumpDataVersion_();) — nay dùng chung 1 hàm
+// simpleSave_(sheetKey, data) để giảm trùng lặp, tránh sai sót khi copy-paste thêm hàm mới sau này.
+// Vẫn giữ mỗi hàm là 1 "function" khai báo riêng ở phạm vi toàn cục (không dùng const/arrow) để đảm
+// bảo google.script.run từ Frontend luôn gọi được đúng tên hàm.
+// NAY: bọc thêm withLock_() để chống 2 người dùng lưu cùng lúc ghi đè mất dữ liệu của nhau (xem chi
+// tiết giải thích tại định nghĩa withLock_ phía trên).
+function simpleSave_(sheetKey, data) {
+  return withLock_(() => { saveSheetData(SHEETS[sheetKey], data); return bumpDataVersion_(); });
+}
+function saveProgramsData(data) { return simpleSave_('PROGRAMS', data); }
+function savePurchasesData(data) { return simpleSave_('PURCHASES', data); }
+function saveLuyKeData(data) { return simpleSave_('LUYKE', data); }
 // THEO MÔ HÌNH 3 TẦNG: Tầng 1 (Danh mục chương trình) và Tầng 3 (Bậc điều kiện con của mã chiết khấu)
-function saveChuongTrinhData(data) { saveSheetData(SHEETS.CHUONGTRINH, data); return bumpDataVersion_(); }
-function saveDieuKienData(data) { saveSheetData(SHEETS.DIEUKIEN, data); return bumpDataVersion_(); }
+function saveChuongTrinhData(data) { return simpleSave_('CHUONGTRINH', data); }
+function saveDieuKienData(data) { return simpleSave_('DIEUKIEN', data); }
+// MỚI: Danh mục tổng hợp doanh thu sản lượng (Mã doanh thu) + Danh mục kế hoạch doanh thu
+function saveDoanhThuData(data) { return simpleSave_('DOANHTHU', data); }
+function saveKeHoachData(data) { return simpleSave_('KEHOACH', data); }
+function saveKeHoachChiTietData(data) { return simpleSave_('KEHOACH_CHITIET', data); }
 
 // Lưu báo cáo chiết khấu (REPORT_CKTH / REPORT_CKCT) theo kiểu CỘNG DỒN + CẬP NHẬT ĐÈ nếu trùng khóa,
 // KHÔNG xóa dữ liệu các kỳ đã lưu trước đó — vì "Tính chiết khấu bổ sung" cần dữ liệu nhiều tháng cộng dồn
@@ -227,15 +416,14 @@ function normKeyVal_(v) {
 }
 function appendOrUpsertRows_(sheetName, rows, keyFields) {
   const ss = SpreadsheetApp.getActive();
-  let sh = ss.getSheetByName(sheetName);
-  if (!sh) sh = ss.insertSheet(sheetName);
+  const sh = getOrCreateSheet_(ss, sheetName);
   const data = sh.getDataRange().getValues();
   let headers, existingRows;
   if (data.length > 0 && data[0].length > 0 && String(data[0][0]) !== '') {
     headers = data[0];
     existingRows = data.slice(1).map(r => {
       let o = {};
-      headers.forEach((h, i) => o[h] = sanitizeCellValue_(r[i]));
+      headers.forEach((h, i) => o[h] = sanitizeCellValue_(r[i], h));
       return o;
     });
   } else {
@@ -246,35 +434,53 @@ function appendOrUpsertRows_(sheetName, rows, keyFields) {
   if (rows.length) {
     Object.keys(rows[0]).forEach(k => { if (headers.indexOf(k) === -1) headers.push(k); });
   }
+  // TỐI ƯU: dùng Map thay vì object thường {} để lập chỉ mục khóa chống trùng — tránh trường hợp
+  // hiếm nhưng có thật: nếu 1 khóa ghép (VD program_id||tu_ngay||den_ngay) vô tình trùng tên thuộc
+  // tính có sẵn trên Object (như "__proto__"), việc gán qua ngoặc vuông trên object thường có thể cư
+  // xử khác thường; Map không có rủi ro này và tra cứu/khớp trùng vẫn ở độ phức tạp O(1) như cũ dù
+  // dữ liệu báo cáo tích lũy nhiều kỳ (tháng/quý/năm) theo thời gian.
   const keyOf = (r) => keyFields.map(k => normKeyVal_(r[k])).join('||');
-  const idx = {};
-  existingRows.forEach((r, i) => { idx[keyOf(r)] = i; });
+  const idx = new Map();
+  existingRows.forEach((r, i) => { idx.set(keyOf(r), i); });
   rows.forEach(r => {
     const k = keyOf(r);
-    if (idx.hasOwnProperty(k)) existingRows[idx[k]] = Object.assign({}, existingRows[idx[k]], r);
-    else { existingRows.push(r); idx[k] = existingRows.length - 1; }
+    if (idx.has(k)) existingRows[idx.get(k)] = Object.assign({}, existingRows[idx.get(k)], r);
+    else { existingRows.push(r); idx.set(k, existingRows.length - 1); }
   });
   // Chỉ chuẩn hóa CÁC CỘT KHÓA (keyFields) về chuỗi cố định trước khi ghi lại — các cột số liệu khác
   // (sản lượng, doanh số, tiền chiết khấu...) vẫn giữ nguyên kiểu dữ liệu gốc để không bị lỗi định dạng
   // số trong Google Sheet. Việc so khớp key ở lần lưu SAU vẫn luôn đúng vì keyOf() đã tự chuẩn hóa lại
   // giá trị đọc lên (kể cả khi Sheets tự ý chuyển ô ngày thành kiểu Date).
   existingRows.forEach(r => { keyFields.forEach(k => { r[k] = normKeyVal_(r[k]); }); });
-  sh.clearContents();
-  if (headers.length) {
-    sh.appendRow(headers);
-    if (existingRows.length) {
-      const values = existingRows.map(r => headers.map(h => r[h] ?? ''));
-      sh.getRange(2, 1, values.length, headers.length).setValues(values);
-    }
-  }
+  if (!headers.length) { sh.clearContents(); return; }
+  const values = existingRows.map(r => headers.map(h => r[h] ?? ''));
+  writeRowsEfficient_(sh, headers, values);
 }
+// NAY: bọc withLock_() — trước đây 2 người dùng cùng lưu báo cáo gần như đồng thời có thể đọc cùng 1
+// bản "existing rows" rồi ghi đè lên nhau (bản lưu sau xoá mất bản ghi upsert của bản lưu trước dù
+// khác khóa). Khoá đảm bảo đọc-sửa-đổi-ghi (read-modify-write) diễn ra TRỌN VẸN, không bị xen ngang.
 function saveReportCKTH(rows) {
-  appendOrUpsertRows_(SHEETS.REPORT_CKTH, rows, ['program_id', 'tu_ngay', 'den_ngay']);
-  return bumpDataVersion_();
+  return withLock_(() => {
+    appendOrUpsertRows_(SHEETS.REPORT_CKTH, rows, ['program_id', 'tu_ngay', 'den_ngay']);
+    return bumpDataVersion_();
+  });
 }
 function saveReportCKCT(rows) {
-  appendOrUpsertRows_(SHEETS.REPORT_CKCT, rows, ['program_id', 'tu_ngay', 'den_ngay', 'mahang']);
-  return bumpDataVersion_();
+  return withLock_(() => {
+    appendOrUpsertRows_(SHEETS.REPORT_CKCT, rows, ['program_id', 'tu_ngay', 'den_ngay', 'mahang']);
+    return bumpDataVersion_();
+  });
+}
+// THEO YÊU CẦU (nút "Dọn dẹp trùng lặp" ở Frontend): GHI ĐÈ TOÀN BỘ REPORT_CKTH/REPORT_CKCT bằng đúng
+// danh sách đã được Frontend lọc bỏ các dòng trùng — khác hẳn saveReportCKTH/CKCT ở trên (vốn chỉ UPSERT,
+// không có khả năng XOÁ bớt dòng). Đây là thao tác GHI ĐÈ THẬT SỰ nên có rủi ro cao hơn nếu gọi nhầm với
+// mảng rỗng/thiếu — saveSheetData() đã có sẵn lớp bảo vệ "không ghi đè bằng mảng rỗng nếu sheet đang có
+// dữ liệu", và withLock_() đảm bảo không bị người khác ghi đè chồng lên trong lúc dọn dẹp.
+function overwriteReportCKTH(rows) {
+  return withLock_(() => { saveSheetData(SHEETS.REPORT_CKTH, rows); return bumpDataVersion_(); });
+}
+function overwriteReportCKCT(rows) {
+  return withLock_(() => { saveSheetData(SHEETS.REPORT_CKCT, rows); return bumpDataVersion_(); });
 }
 
 // ===== TEST KẾT NỐI TỐI GIẢN: không đọc/ghi Sheet, chỉ trả về thời gian máy chủ. Dùng để tách bạch
@@ -313,6 +519,9 @@ function getCurrentUserEmail() {
 // Xem kết quả (bao nhiêu dòng đã chuyển cho từng loại) ở View -> Logs (hoặc Executions).
 // =====================================================================================
 function migrateLegacyData() {
+  return withLock_(() => migrateLegacyData_impl_(), 60000);
+}
+function migrateLegacyData_impl_() {
   const ss = SpreadsheetApp.getActive();
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+7', 'yyyyMMdd_HHmmss');
   const report = [];
@@ -324,7 +533,7 @@ function migrateLegacyData() {
     const headers = data[0].map(h => String(h).trim());
     const rows = data.slice(1)
       .filter(r => r.some(c => String(c).trim() !== ''))
-      .map(r => { const o = {}; headers.forEach((h, i) => o[h] = sanitizeCellValue_(r[i])); return o; });
+      .map(r => { const o = {}; headers.forEach((h, i) => o[h] = sanitizeCellValue_(r[i], h)); return o; });
     return { headers, rows };
   }
   // Lấy giá trị theo danh sách tên cột khả dĩ (không phân biệt hoa/thường, khoảng trắng, gạch dưới)
@@ -362,15 +571,12 @@ function migrateLegacyData() {
   }
   function writeTarget_(sheetName, objRows) {
     if (!objRows.length) return;
-    let sh = ss.getSheetByName(sheetName);
-    if (!sh) sh = ss.insertSheet(sheetName);
+    const sh = getOrCreateSheet_(ss, sheetName);
     const existing = readSheetAsObjects_(sh).rows;
     const merged = existing.concat(objRows); // cộng dồn, không đè mất dữ liệu đã có sẵn đúng chuẩn
     const headers = Object.keys(merged[0]);
     merged.forEach(r => Object.keys(r).forEach(k => { if (headers.indexOf(k) === -1) headers.push(k); }));
-    sh.clearContents();
-    sh.appendRow(headers);
-    sh.getRange(2, 1, merged.length, headers.length).setValues(merged.map(r => headers.map(h => r[h] ?? '')));
+    writeRowsEfficient_(sh, headers, merged.map(r => headers.map(h => r[h] ?? '')));
   }
   function backupOriginal_(sheet) {
     try { sheet.setName(sheet.getName() + '_BACKUP_' + stamp); } catch (e) {}

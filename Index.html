@@ -40,6 +40,12 @@ body{
   line-height:1.5;
   -webkit-font-smoothing:antialiased;
 }
+/* SỬA LỖI: icon SVG (ICON.xxx) chỉ khai viewBox, không có width/height riêng — nếu chèn ở chỗ không có
+   class nào ràng buộc kích thước (VD ngay trong nút <button class="btn">), trình duyệt sẽ tự cho icon
+   kích thước mặc định rất lớn, phá vỡ bố cục và che mất nội dung bên dưới. Quy định chung: mọi SVG mặc
+   định to bằng đúng cỡ chữ hiện tại (1em) trừ khi có rule cụ thể hơn ghi đè (xem .nav-item .ic svg,
+   .small-x svg bên dưới) — luôn có 1 kích thước hợp lý, không bao giờ "bùng nổ" ra to bất thường. */
+svg{width:1em;height:1em;flex-shrink:0;display:inline-block;vertical-align:-0.15em;}
 .mono{font-family:'IBM Plex Mono',monospace;}
 h1,h2,h3,.display{font-family:'Space Grotesk',system-ui,sans-serif;}
 ::selection{background:var(--emerald-soft);}
@@ -48,7 +54,7 @@ h1,h2,h3,.display{font-family:'Space Grotesk',system-ui,sans-serif;}
 
 /* Sidebar */
 .sidebar{
-  width:236px;flex-shrink:0;background:var(--navy-950);
+  width:268px;flex-shrink:0;background:var(--navy-950);
   color:var(--slate-200);display:flex;flex-direction:column;
   position:sticky;top:0;height:100vh;overflow-y:auto;
 }
@@ -64,21 +70,23 @@ h1,h2,h3,.display{font-family:'Space Grotesk',system-ui,sans-serif;}
 .brand .name{font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#fff;letter-spacing:.2px;}
 .brand .sub{font-size:11.5px;color:var(--slate-400);margin-top:2px;}
 
-.nav{padding:14px 12px;flex:1;}
+.nav{padding:14px 10px;flex:1;}
 .nav-item{
-  display:flex;align-items:center;gap:10px;
-  padding:10px 12px;border-radius:8px;cursor:pointer;
-  color:var(--slate-400);font-size:13.5px;font-weight:500;
+  display:flex;align-items:center;gap:8px;
+  padding:10px 10px;border-radius:8px;cursor:pointer;
+  color:var(--slate-400);font-size:13px;font-weight:500;
   margin-bottom:2px;transition:background .12s,color .12s;
   user-select:none;
 }
 .nav-item .ic{width:17px;height:17px;flex-shrink:0;opacity:.8;}
+.nav-item .ic svg{width:17px;height:17px;}
+.nav-item > span:not(.ic):not(.badge-count){flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .nav-item:hover{background:var(--navy-800);color:var(--slate-100);}
 .nav-item.active{background:var(--navy-800);color:#fff;}
 .nav-item.active .ic{opacity:1;color:var(--emerald);}
 .nav-label{
   font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;
-  color:var(--slate-500);padding:16px 12px 6px;font-weight:600;
+  color:var(--slate-500);padding:16px 10px 6px;font-weight:600;
 }
 .nav-item.active{box-shadow:inset 3px 0 0 var(--emerald);}
 
@@ -100,7 +108,7 @@ h1,h2,h3,.display{font-family:'Space Grotesk',system-ui,sans-serif;}
 }
 .topbar h1{font-size:19px;margin:0;font-weight:600;letter-spacing:-.2px;}
 .topbar .desc{font-size:12.5px;color:var(--slate-500);margin-top:2px;}
-.content{padding:28px 32px 60px;max-width:1320px;width:100%;margin:0 auto;}
+.content{padding:28px 32px 60px;max-width:1600px;width:100%;margin:0 auto;}
 
 /* Cards & layout helpers */
 .card{
@@ -194,6 +202,7 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono';}
   background:#fff;border-radius:14px;padding:24px 26px;width:100%;max-width:560px;
   max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25);
 }
+.modal.modal-wide{max-width:min(1400px,94vw);}
 .modal h3{margin:0 0 16px;font-size:16px;}
 .toast-wrap{position:fixed;bottom:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px;}
 .toast{
@@ -207,7 +216,7 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono';}
 
 .badge-count{
   background:var(--navy-700);color:var(--slate-200);font-size:10.5px;font-weight:700;
-  padding:1px 7px;border-radius:20px;margin-left:auto;
+  padding:1px 7px;border-radius:20px;margin-left:auto;flex-shrink:0;
 }
 .nav-item.active .badge-count{background:var(--emerald);color:#fff;}
 
@@ -223,6 +232,7 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono';}
   width:26px;height:26px;border-radius:6px;border:1px solid var(--slate-200);
   display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--slate-500);flex-shrink:0;
 }
+.small-x svg{width:15px;height:15px;}
 .small-x:hover{border-color:var(--red);color:var(--red);background:var(--red-soft);}
 ::-webkit-scrollbar{height:10px;width:10px;}
 ::-webkit-scrollbar-thumb{background:var(--slate-200);border-radius:8px;}
@@ -271,12 +281,25 @@ let DB = {
   // đó (y hệt cách tính cũ) — dữ liệu cũ không cần chuyển đổi vẫn chạy đúng.
   chuongtrinh: [],
   dieukien: [],
+  // MỚI: Danh mục tổng hợp doanh thu sản lượng (Mã doanh thu) + Danh mục kế hoạch doanh thu
+  doanhthu: [],
+  kehoach: [],
+  kehoachChiTiet: [], // Chi tiết kế hoạch theo từng kỳ (Tháng/Quý/6 Tháng/Năm hoặc kỳ tùy chỉnh) của 1 kế hoạch
   // THEO GÓP Ý: Giá công bố (1.365 dòng) và Mua hàng (1.435 dòng) không tự tải lúc mở app
   // nữa — chỉ tải khi người dùng thật sự vào đúng menu cần dùng. Cờ dưới đây đánh dấu đã tải hay chưa.
   _giacongboLoaded: false,
-  _purchasesLoaded: false
+  _purchasesLoaded: false,
+  // 'all' = đã tải TOÀN BỘ Sổ mua hàng; mảng NCC = đã tải LỌC theo đúng các NCC đó (dùng riêng cho tab
+  // Sổ chi tiết mua hàng); null = chưa tải gì. QUAN TRỌNG: mọi nơi khác cần dữ liệu ĐẦY ĐỦ (Tổng quan,
+  // Tính chiết khấu, Báo cáo, Đối chiếu giá) PHẢI kiểm tra scope==='all', KHÔNG được chỉ kiểm tra
+  // _purchasesLoaded — nếu không sẽ vô tình dùng dữ liệu THIẾU (mới lọc 1 phần) để tính chiết khấu,
+  // gây SAI SỐ tài chính mà không có cảnh báo gì.
+  _purchasesScope: null
 };
 let UI = { tab:'dashboard', catalogSub:'thuonghieu', reportResult:null, purchaseFilters:{} };
+// Kiểm tra Sổ mua hàng đã được tải ĐẦY ĐỦ (toàn bộ NCC) hay chưa — dùng ở MỌI nơi cần dữ liệu đầy đủ để
+// tính toán (khác với chỉ xem/lọc trong tab Sổ chi tiết mua hàng, nơi được phép tải lọc 1 phần).
+function purchasesFullyLoaded_(){ return DB._purchasesScope === 'all'; }
 
 /* ---------------------------- utils ---------------------------- */
 const uid = () => 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
@@ -337,8 +360,10 @@ function toast(msg, type){
   setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .25s'; setTimeout(()=>el.remove(),260); }, 3200);
 }
 
-function openModal(html){
-  document.getElementById('modalBody').innerHTML = html;
+function openModal(html, opts){
+  const el = document.getElementById('modalBody');
+  el.innerHTML = html;
+  el.classList.toggle('modal-wide', !!(opts && opts.wide));
   document.getElementById('modalBg').classList.add('show');
 }
 function closeModal(){ document.getElementById('modalBg').classList.remove('show'); }
@@ -349,7 +374,18 @@ document.getElementById('modalBg').addEventListener('click', (e)=>{ if(e.target.
    mỗi lần mở lại ứng dụng nếu dữ liệu trên Sheet chưa thay đổi kể từ lần tải trước. */
 const CACHE_KEY = 'ckapp_cache_v1';
 function safeLocalGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
-function safeLocalSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){ /* quota vượt mức hoặc bị chặn, bỏ qua cache */ } }
+// TỐI ƯU: trước đây lỗi ghi cache (VD vượt quota 5MB của localStorage) bị NUỐT HOÀN TOÀN, im lặng —
+// khiến app tưởng đã cache thành công nhưng thực ra lần mở sau vẫn phải tải lại từ đầu, không có cách
+// nào biết vì sao. Nay: nếu ghi thất bại, THỬ XOÁ cache cũ (khả năng cao do rác cũ chiếm chỗ) rồi ghi
+// lại 1 lần nữa; nếu vẫn thất bại thì log cảnh báo ra console (không làm phiền người dùng bằng toast,
+// vì đây không phải lỗi nghiêm trọng — app vẫn chạy đúng, chỉ mất tác dụng cache).
+function safeLocalSet(k,v){
+  try{ localStorage.setItem(k,v); return true; }
+  catch(e){
+    try{ localStorage.removeItem(k); localStorage.setItem(k,v); return true; }
+    catch(e2){ console.warn('Không thể ghi cache cục bộ (localStorage):', e2 && e2.message); return false; }
+  }
+}
 function readCache(){
   const raw = safeLocalGet(CACHE_KEY);
   if(!raw) return null;
@@ -381,6 +417,9 @@ function applyLoadedData(data){
   DB.reportCKCT = (data && data.reportCKCT) || [];
   DB.chuongtrinh = (data && data.chuongtrinh) || [];
   DB.dieukien = (data && data.dieukien) || [];
+  DB.doanhthu = (data && data.doanhthu) || [];
+  DB.kehoach = (data && data.kehoach) || [];
+  DB.kehoachChiTiet = (data && data.kehoachChiTiet) || [];
   DB._lastLoadedAt = new Date(); // THEO GÓP Ý: ghi lại thời điểm tải dữ liệu gần nhất để hiển thị cho người dùng yên tâm
   normalizeDateFields_(DB.purchases, ['ngay']);
   normalizeDateFields_(DB.programs, ['hieuluctu','hieulucden']);
@@ -389,10 +428,22 @@ function applyLoadedData(data){
   normalizeDateFields_(DB.catalog.giacongbo, ['hieuluctu','hieulucden']);
   normalizeDateFields_(DB.reportCKTH, ['ngay_tinh','tu_ngay','den_ngay']);
   normalizeDateFields_(DB.reportCKCT, ['ngay_tinh','tu_ngay','den_ngay']);
+  normalizeDateFields_(DB.kehoach, ['ngaylap','hieuluctu','hieulucden']);
+  normalizeDateFields_(DB.kehoachChiTiet, ['tu_ngay','den_ngay']);
   ensureNO();
+  migrateProgramsToDoanhThu_(); // MỚI: tự tạo "Mã doanh thu" cho các Mã chiết khấu cũ chưa có (chạy nền)
 }
+// TỐI ƯU (giảm dung lượng cache localStorage, tránh vượt quota 5MB): trước đây snapshot cache đưa cả
+// Giá công bố (DB.catalog.giacongbo, ~1.365 dòng) và Sổ chi tiết mua hàng (DB.purchases, ~1.435 dòng)
+// vào localStorage — đây là 2 bảng LỚN NHẤT và TĂNG DẦN theo thời gian, dễ khiến cache vượt quota rồi
+// âm thầm không lưu được (trước đây không có cảnh báo gì, xem safeLocalSet ở trên). Nay CHỦ ĐỘNG loại
+// bỏ 2 bảng này khỏi cache — không ảnh hưởng tính đúng đắn vì 2 bảng này ĐÃ CÓ SẴN cơ chế tải riêng
+// theo chunk (ensureGiaCongBoLoaded/ensurePurchasesLoaded), tự tải ngay khi người dùng vào đúng menu
+// cần dùng, có thanh tiến độ + tự thử lại — bền hơn nhiều so với 1 khối cache lớn trong localStorage.
 function snapshotDB(){
-  return { catalog: DB.catalog, programs: DB.programs, purchases: DB.purchases, programsLuyKe: DB.programsLuyKe, reportCKTH: DB.reportCKTH, reportCKCT: DB.reportCKCT, chuongtrinh: DB.chuongtrinh, dieukien: DB.dieukien };
+  const catalogLight = Object.assign({}, DB.catalog);
+  delete catalogLight.giacongbo;
+  return { catalog: catalogLight, programs: DB.programs, programsLuyKe: DB.programsLuyKe, reportCKTH: DB.reportCKTH, reportCKCT: DB.reportCKCT, chuongtrinh: DB.chuongtrinh, dieukien: DB.dieukien, doanhthu: DB.doanhthu, kehoach: DB.kehoach, kehoachChiTiet: DB.kehoachChiTiet };
 }
 // Gọi 1 hàm server qua google.script.run dạng Promise (đơn giản, tuần tự, không có logic thử lại
 // phức tạp — bản trước dùng tự động thử lại song song nhưng gây tranh chấp/kết quả chập chờn).
@@ -446,6 +497,13 @@ function fullReloadFromSheet(resolve, reject){
       if (!core || !core.catalog) throw new Error('Không tải được Danh mục/Chương trình sau nhiều lần thử.');
       core.catalog.giacongbo = DB._giacongboLoaded ? DB.catalog.giacongbo : [];
       core.purchases = DB._purchasesLoaded ? DB.purchases : [];
+      // DM_DIEUKIEN (bậc điều kiện con của mã chiết khấu) nay tải riêng theo chunk — cùng cơ chế
+      // phòng ngừa timeout như Giá công bố/Mua hàng, sẵn sàng chịu được khi dữ liệu tăng dần theo
+      // thời gian mà không cần đổi gì thêm ở đây.
+      return loadInChunks_('getDieuKienRowCount', 'loadDieuKienChunk', 500)
+        .then(res => { core.dieukien = rowsToObjects_(res.headers, res.rows); return core; });
+    })
+    .then(core => {
       applyLoadedData(core);
       if (core.version) writeCache(core.version, snapshotDB());
       resolve();
@@ -461,34 +519,41 @@ function rowsToObjects_(headers, rows){
 // SỬA LỖI: cách gọi động "[tenHam](...args)" khi ghép với việc TRUYỀN THAM SỐ (offset, limit) không
 // tới được máy chủ (không có bản ghi thực thi nào trong Executions — nghĩa là lỗi xảy ra ngay ở trình
 // duyệt, trước khi gửi yêu cầu đi). Nay gọi TƯỜNG MINH bằng tên hàm cụ thể, không qua cách gọi động.
-function callChunkFn_(chunkFnName, offset, limit){
+function callChunkFn_(chunkFnName, offset, limit, extraArg){
   return new Promise((resolve, reject) => {
     const runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
     if (chunkFnName === 'loadPurchasesChunk') runner.loadPurchasesChunk(offset, limit);
     else if (chunkFnName === 'loadGiaCongBoChunk') runner.loadGiaCongBoChunk(offset, limit);
+    else if (chunkFnName === 'loadDieuKienChunk') runner.loadDieuKienChunk(offset, limit);
+    else if (chunkFnName === 'loadPurchasesChunkBySupplier') runner.loadPurchasesChunkBySupplier(extraArg, offset, limit);
     else reject(new Error('Hàm tải gói không xác định: ' + chunkFnName));
   });
 }
-function callChunkFnRetry_(chunkFnName, offset, limit, isEmpty, maxRetries, delayMs){
-  return retryCall_(() => callChunkFn_(chunkFnName, offset, limit), isEmpty, maxRetries, delayMs);
+function callChunkFnRetry_(chunkFnName, offset, limit, isEmpty, maxRetries, delayMs, extraArg){
+  return retryCall_(() => callChunkFn_(chunkFnName, offset, limit, extraArg), isEmpty, maxRetries, delayMs);
 }
 // Tương tự cho hàm đếm tổng dòng (không tham số, nhưng để đồng bộ cách gọi tường minh luôn)
-function callCountFn_(countFnName){
+function callCountFn_(countFnName, extraArg){
   return new Promise((resolve, reject) => {
     const runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
     if (countFnName === 'getPurchasesRowCount') runner.getPurchasesRowCount();
     else if (countFnName === 'getGiaCongBoRowCount') runner.getGiaCongBoRowCount();
+    else if (countFnName === 'getDieuKienRowCount') runner.getDieuKienRowCount();
+    else if (countFnName === 'getPurchasesRowCountBySupplier') runner.getPurchasesRowCountBySupplier(extraArg);
     else reject(new Error('Hàm đếm dòng không xác định: ' + countFnName));
   });
 }
-function callCountFnRetry_(countFnName, maxRetries, delayMs){
-  return retryCall_(() => callCountFn_(countFnName), null, maxRetries, delayMs);
+function callCountFnRetry_(countFnName, maxRetries, delayMs, extraArg){
+  return retryCall_(() => callCountFn_(countFnName, extraArg), null, maxRetries, delayMs);
 }
 // Tải 1 sheet lớn theo TỪNG GÓI NHỎ (chunk), gọi lần lượt cho tới khi đủ — mỗi gói luôn nhỏ, không
 // bao giờ đủ lớn để bị lỗi truyền qua kênh giao tiếp iframe của Apps Script. onProgress(loaded, total)
 // để hiện tiến độ cho người dùng thấy trong lúc chờ.
-async function loadInChunks_(countFnName, chunkFnName, chunkSize, onProgress){
-  const countRes = await callCountFnRetry_(countFnName, 2, 1500);
+// THEO YÊU CẦU: thêm tham số extraArg (tuỳ chọn) để truyền thêm điều kiện lọc (VD danh sách Nhà cung
+// cấp) xuống hàm đếm/hàm tải gói tương ứng — dùng cho ensurePurchasesLoadedFiltered() bên dưới. Hoàn
+// toàn tương thích ngược: các lượt gọi cũ không truyền extraArg vẫn hoạt động y hệt trước (undefined).
+async function loadInChunks_(countFnName, chunkFnName, chunkSize, onProgress, extraArg){
+  const countRes = await callCountFnRetry_(countFnName, 2, 1500, extraArg);
   const total = (countRes && countRes.total) || 0;
   if (total === 0) return { headers: [], rows: [] };
   let headers = [];
@@ -496,11 +561,15 @@ async function loadInChunks_(countFnName, chunkFnName, chunkSize, onProgress){
   let offset = 0;
   while (offset < total) {
     if (onProgress) onProgress(offset, total);
-    const chunk = await callChunkFnRetry_(chunkFnName, offset, chunkSize, r => !r || !Array.isArray(r.rows), 2, 1200);
+    const chunk = await callChunkFnRetry_(chunkFnName, offset, chunkSize, r => !r || !Array.isArray(r.rows), 2, 1200, extraArg);
     if (!chunk || !Array.isArray(chunk.rows)) throw new Error('Không tải được gói dữ liệu tại vị trí ' + offset + '.');
     if (chunk.headers && chunk.headers.length) headers = chunk.headers;
     allRows.push(...chunk.rows);
-    if (!chunk.rows.length) break; // hết dữ liệu sớm hơn dự kiến, dừng để tránh vòng lặp vô hạn
+    // SỬA LỖI: trước đây nếu 1 gói (chunk) trả về 0 dòng (VD gặp 1 khoảng dòng TRẮNG dài hơn
+    // chunkSize nằm giữa sheet) thì dừng vòng lặp NGAY, coi như đã hết dữ liệu — nhưng thực tế phía
+    // sau khoảng trắng đó vẫn có thể còn dữ liệu thật, bị bỏ sót mà không báo lỗi gì. offset tính theo
+    // VỊ TRÍ DÒNG TRONG SHEET (không phải số dòng đã lọc được), nên điều kiện while(offset < total) ở
+    // trên đã tự đảm bảo vòng lặp luôn dừng đúng lúc — không cần "đoán" hết dữ liệu qua độ dài gói.
     offset += chunkSize;
   }
   if (onProgress) onProgress(total, total);
@@ -526,7 +595,11 @@ async function ensureGiaCongBoLoaded(force){
 window.ensureGiaCongBoLoaded = ensureGiaCongBoLoaded;
 // Tải riêng dữ liệu Sổ chi tiết mua hàng khi cần (bấm "Áp dụng bộ lọc" lần đầu, hoặc "Nạp lại dữ liệu").
 async function ensurePurchasesLoaded(force){
-  if (DB._purchasesLoaded && !force) return;
+  // SỬA quan trọng: kiểm tra scope==='all' (đã tải ĐẦY ĐỦ) thay vì chỉ _purchasesLoaded — vì
+  // _purchasesLoaded có thể đang true do trước đó người dùng chỉ mới tải LỌC theo 1 vài NCC ở tab Sổ
+  // chi tiết mua hàng (xem ensurePurchasesLoadedFiltered bên dưới). Nếu chỉ kiểm tra _purchasesLoaded,
+  // các nơi cần dữ liệu ĐẦY ĐỦ (Tổng quan/Tính CK/Báo cáo/Đối chiếu) sẽ SAI SỐ vì tính thiếu NCC.
+  if (purchasesFullyLoaded_() && !force) return;
   const res = await loadInChunks_('getPurchasesRowCount', 'loadPurchasesChunk', 300,
     (loaded, total) => loadingPane_(`Đang tải Sổ chi tiết mua hàng... ${loaded}/${total} dòng`));
   const newData = rowsToObjects_(res.headers, res.rows);
@@ -536,8 +609,28 @@ async function ensurePurchasesLoaded(force){
   DB.purchases = newData;
   normalizeDateFields_(DB.purchases, ['ngay']);
   DB._purchasesLoaded = true;
+  DB._purchasesScope = 'all';
 }
 window.ensurePurchasesLoaded = ensurePurchasesLoaded;
+// THEO YÊU CẦU: chỉ tải dữ liệu Mua hàng của CÁC NHÀ CUNG CẤP ĐƯỢC CHỌN — dùng riêng cho tab "Sổ chi
+// tiết mua hàng" khi người dùng chủ động chọn 1 vài NCC cần xem thay vì toàn bộ ~1.400+ dòng. TUYỆT ĐỐI
+// KHÔNG dùng hàm này ở bất kỳ nơi nào khác cần dữ liệu đầy đủ để tính chiết khấu (Tổng quan/Tính
+// CK/Báo cáo/Đối chiếu) — các nơi đó phải dùng ensurePurchasesLoaded() (tải toàn bộ) như cũ.
+async function ensurePurchasesLoadedFiltered(suppliers, force){
+  const wanted = (suppliers||[]).slice().sort();
+  const key = wanted.join('|');
+  const currentKey = Array.isArray(DB._purchasesScope) ? DB._purchasesScope.slice().sort().join('|') : '';
+  if (!force && purchasesFullyLoaded_()) return; // đã có sẵn toàn bộ rồi thì khỏi cần tải lọc lại
+  if (!force && currentKey === key && DB._purchasesLoaded) return; // đã tải đúng đúng bộ NCC này rồi
+  const res = await loadInChunks_('getPurchasesRowCountBySupplier', 'loadPurchasesChunkBySupplier', 300,
+    (loaded, total) => loadingPane_(`Đang tải Sổ chi tiết mua hàng (${wanted.length} NCC đã chọn)... ${loaded}/${total} dòng`), wanted);
+  const newData = rowsToObjects_(res.headers, res.rows);
+  DB.purchases = newData;
+  normalizeDateFields_(DB.purchases, ['ngay']);
+  DB._purchasesLoaded = true;
+  DB._purchasesScope = wanted;
+}
+window.ensurePurchasesLoadedFiltered = ensurePurchasesLoadedFiltered;
 function loadAll() {
   return new Promise((resolve, reject) => {
     try {
@@ -553,6 +646,7 @@ function loadAll() {
             // tải khi người dùng vào đúng menu.
             DB._giacongboLoaded = (DB.catalog.giacongbo||[]).length > 0;
             DB._purchasesLoaded = (DB.purchases||[]).length > 0;
+            DB._purchasesScope = DB._purchasesLoaded ? 'all' : null;
             resolve();
             return;
           }
@@ -573,13 +667,18 @@ function loadAll() {
 // hiển thị chưa đúng (VD vừa sửa tay trực tiếp trên Sheet) hoặc muốn chắc chắn 100% là bản mới nhất.
 function forceRefreshData(){
   toast('Đang tải lại dữ liệu từ Google Sheet...', 'ok');
-  const wasGcbLoaded = DB._giacongboLoaded, wasPurLoaded = DB._purchasesLoaded;
+  const wasGcbLoaded = DB._giacongboLoaded;
+  const wasPurScope = DB._purchasesScope; // 'all' | mảng NCC đã lọc | null (chưa tải gì)
   new Promise((resolve, reject) => fullReloadFromSheet(resolve, reject))
     .then(async () => {
       // Nếu trước đó Giá công bố/Mua hàng đã từng được tải, tải lại luôn phần đó cho mới nhất
       // (vì fullReloadFromSheet giờ chỉ tải phần nhẹ theo mặc định).
       if (wasGcbLoaded) await ensureGiaCongBoLoaded(true);
-      if (wasPurLoaded) await ensurePurchasesLoaded(true);
+      // THEO YÊU CẦU: nếu trước đó người dùng chỉ đang xem Mua hàng LỌC theo 1 số NCC (ở tab Sổ chi
+      // tiết mua hàng), "Làm mới dữ liệu" cũng chỉ tải lại ĐÚNG các NCC đó — không âm thầm tải lại
+      // TOÀN BỘ ~1.400+ dòng (đi ngược lại đúng mục đích giảm tải mà tính năng lọc NCC hướng tới).
+      if (wasPurScope === 'all') await ensurePurchasesLoaded(true);
+      else if (Array.isArray(wasPurScope) && wasPurScope.length) await ensurePurchasesLoadedFiltered(wasPurScope, true);
       toast('Đã tải lại dữ liệu mới nhất từ Sheet', 'ok');
       try{
         renderShell();
@@ -708,6 +807,299 @@ function pingTest10x(){
 }
 window.pingTest10x = pingTest10x;
 
+/* ============================ TỰ KIỂM THỬ CÔNG THỨC TÍNH CHIẾT KHẤU ============================ */
+// THEO YÊU CẦU: app này chỉ là 1 file HTML chạy trong Apps Script, không có hạ tầng build/test riêng —
+// nên bộ test dưới đây chạy ngay trong trình duyệt, gọi TRỰC TIẾP các hàm công thức THẬT đang dùng
+// trong app (dimsMatch, periodOverlap, inBracket, checkSlDtBracket, calcDiscountForProgram,
+// resolveEffectiveBac_, giaMuaBinhQuan, snapPeriodFromDate, computeReport) — KHÔNG viết lại logic riêng
+// cho test, để test không bao giờ "lệch" khỏi code thật theo thời gian. Test KHÔNG đụng tới dữ liệu
+// thật trên Google Sheet: các test đơn vị dùng dữ liệu tự tạo truyền trực tiếp vào hàm; riêng bài test
+// tích hợp cho computeReport() cần dữ liệu qua biến toàn cục DB nên TẠM THỜI thay DB bằng dữ liệu giả
+// lập trong bộ nhớ trình duyệt rồi PHỤC HỒI LẠI NGUYÊN VẸN ngay sau đó — an toàn tuyệt đối vì
+// JavaScript chạy tuần tự 1 luồng, không có tác vụ bất đồng bộ nào (không await/setTimeout) chen ngang
+// trong lúc DB đang bị thay thế tạm thời.
+function runFormulaTests(){
+  const results = [];
+  function test(name, fn){
+    try{ fn(); results.push({ name, ok:true }); }
+    catch(e){ results.push({ name, ok:false, err: e.message||String(e) }); }
+  }
+  function assertEqual(actual, expected, label){
+    if(actual !== expected) throw new Error(`${label||''} kỳ vọng ${JSON.stringify(expected)}, thực tế ${JSON.stringify(actual)}`);
+  }
+  function assertClose(actual, expected, label, eps){
+    eps = eps==null?0.001:eps;
+    if(Math.abs(actual-expected) > eps) throw new Error(`${label||''} kỳ vọng ~${expected}, thực tế ${actual}`);
+  }
+  function assertTrue(cond, label){ if(!cond) throw new Error(label||'Điều kiện phải đúng (true)'); }
+
+  /* ---- dimsMatch ---- */
+  const allNo = {thuonghieu:'NO',nhomkh:'NO',loaisp:'NO',dactinh:'NO',congdung:'NO',quycach:'NO'};
+  test('dimsMatch: chương trình chọn NO ở 1 cột -> bỏ qua, luôn khớp cột đó', ()=>{
+    assertTrue(dimsMatch({...allNo, thuonghieu:'CASU'}, allNo));
+  });
+  test('dimsMatch: khớp đúng giá trị cụ thể', ()=>{
+    assertTrue(dimsMatch({...allNo, thuonghieu:'CASU'}, {...allNo, thuonghieu:'CASU'}));
+  });
+  test('dimsMatch: không khớp khi giá trị khác nhau', ()=>{
+    assertTrue(!dimsMatch({...allNo, thuonghieu:'CASU'}, {...allNo, thuonghieu:'BRIDGESTONE'}));
+  });
+  test('dimsMatch: mã hỗn hợp "TBR,BIAS" khớp nếu sản phẩm thuộc 1 trong 2 mã', ()=>{
+    assertTrue(dimsMatch({...allNo, loaisp:'TBR'}, {...allNo, loaisp:'TBR,BIAS'}));
+    assertTrue(dimsMatch({...allNo, loaisp:'BIAS'}, {...allNo, loaisp:'TBR,BIAS'}));
+    assertTrue(!dimsMatch({...allNo, loaisp:'PCR'}, {...allNo, loaisp:'TBR,BIAS'}));
+  });
+
+  /* ---- periodOverlap ---- */
+  test('periodOverlap: 2 khoảng có giao nhau -> true', ()=>{
+    assertTrue(periodOverlap('2026-01-01','2026-01-31','2026-01-15','2026-02-15'));
+  });
+  test('periodOverlap: 2 khoảng tách rời -> false', ()=>{
+    assertTrue(!periodOverlap('2026-01-01','2026-01-31','2026-02-01','2026-02-28'));
+  });
+  test('periodOverlap: hiệu lực chương trình để trống -> luôn coi là còn hiệu lực', ()=>{
+    assertTrue(periodOverlap('2026-01-01','2026-01-31','',''));
+  });
+
+  /* ---- inBracket ---- */
+  test('inBracket: max=0 nghĩa là KHÔNG giới hạn trên (quy ước riêng của app)', ()=>{
+    assertTrue(inBracket(999999999, 100, 0));
+  });
+  test('inBracket: min/max để trống -> không giới hạn cả 2 phía', ()=>{
+    assertTrue(inBracket(-500, '', ''));
+  });
+  test('inBracket: đúng tại 2 biên min/max, sai ngay ngoài biên', ()=>{
+    assertTrue(inBracket(100, 100, 200) && inBracket(200, 100, 200));
+    assertTrue(!inBracket(99.99, 100, 200) && !inBracket(200.01, 100, 200));
+  });
+
+  /* ---- checkSlDtBracket: logic AND/OR giữa bậc Sản lượng và Doanh thu ---- */
+  test('checkSlDtBracket: AND -> phải đạt CẢ 2 điều kiện', ()=>{
+    const prog = {sl_min:100, sl_max:0, dt_min:1000000, dt_max:0, dieukien_sldt:'AND'};
+    assertTrue(checkSlDtBracket(prog, 150, 2000000).dat);
+    assertTrue(!checkSlDtBracket(prog, 150, 500000).dat, 'DT chưa đạt thì AND phải KHÔNG đạt');
+  });
+  test('checkSlDtBracket: OR -> chỉ cần đạt 1 TRONG 2', ()=>{
+    const prog = {sl_min:100, sl_max:0, dt_min:1000000, dt_max:0, dieukien_sldt:'OR'};
+    assertTrue(checkSlDtBracket(prog, 150, 500000).dat, 'SL đạt thì OR phải đạt dù DT chưa đạt');
+  });
+
+  /* ---- calcDiscountForProgram: 3 hình thức chiết khấu ---- */
+  test('calcDiscountForProgram: % theo giá mua (PERCENT_GIAMUA)', ()=>{
+    assertClose(calcDiscountForProgram({ht_chietkhau:'PERCENT_GIAMUA', tl_ck:5}, 100, 1000000, 0), 50000);
+  });
+  test('calcDiscountForProgram: % theo giá công bố (PERCENT_GIACONGBO)', ()=>{
+    assertClose(calcDiscountForProgram({ht_chietkhau:'PERCENT_GIACONGBO', tl_ck:10}, 100, 0, 20000), 200000);
+  });
+  test('calcDiscountForProgram: đơn giá cố định (DONGIA_CODINH)', ()=>{
+    assertClose(calcDiscountForProgram({ht_chietkhau:'DONGIA_CODINH', dongia_codinh:1500}, 100, 0, 0), 150000);
+  });
+  test('calcDiscountForProgram: hình thức không xác định -> trả 0đ (không lỗi)', ()=>{
+    assertEqual(calcDiscountForProgram({ht_chietkhau:'KHONG_TON_TAI'}, 100, 1000000, 0), 0);
+  });
+
+  /* ---- giaMuaBinhQuan ---- */
+  test('giaMuaBinhQuan: SL=0 -> trả 0 (không chia cho 0 ra lỗi/NaN)', ()=>{
+    assertEqual(giaMuaBinhQuan(0, 500000), 0);
+  });
+  test('giaMuaBinhQuan: tính đúng giá bình quân = DT/SL', ()=>{
+    assertClose(giaMuaBinhQuan(100, 1000000), 10000);
+  });
+
+  /* ---- resolveEffectiveBac_: mô hình 3 tầng, bậc điều kiện con (DB.dieukien) ---- */
+  const dieukienBackup = DB.dieukien;
+  try{
+    test('resolveEffectiveBac_: không có bậc con -> dùng thẳng chính CT (tương thích ngược)', ()=>{
+      DB.dieukien = [];
+      const prog = {id:'P1', sl_min:0, sl_max:0, dt_min:0, dt_max:0, tl_ck:5};
+      const r = resolveEffectiveBac_(prog, 100, 100);
+      assertTrue(!r.noBacMatched);
+      assertEqual(r.effective, prog);
+    });
+    test('resolveEffectiveBac_: có bậc con, chọn đúng bậc khớp SL thực tế', ()=>{
+      DB.dieukien = [
+        { id:'D1', program_id:'P1', sl_min:0, sl_max:99, dt_min:0, dt_max:0, tl_ck:3 },
+        { id:'D2', program_id:'P1', sl_min:100, sl_max:0, dt_min:0, dt_max:0, tl_ck:7 }
+      ];
+      const r = resolveEffectiveBac_({id:'P1', tl_ck:0}, 150, 0);
+      assertEqual(r.matchedBac.id, 'D2');
+      assertEqual(r.effective.tl_ck, 7);
+    });
+    test('resolveEffectiveBac_: nhiều bậc chồng lấn -> ưu tiên tỷ lệ CK CAO NHẤT', ()=>{
+      DB.dieukien = [
+        { id:'D1', program_id:'P1', sl_min:0, sl_max:0, dt_min:0, dt_max:0, tl_ck:3 },
+        { id:'D2', program_id:'P1', sl_min:0, sl_max:0, dt_min:0, dt_max:0, tl_ck:9 }
+      ];
+      assertEqual(resolveEffectiveBac_({id:'P1'}, 10, 10).matchedBac.id, 'D2');
+    });
+    test('resolveEffectiveBac_: có bậc con nhưng KHÔNG bậc nào khớp -> noBacMatched=true', ()=>{
+      DB.dieukien = [{ id:'D1', program_id:'P1', sl_min:1000, sl_max:0, dt_min:0, dt_max:0, tl_ck:5 }];
+      assertTrue(resolveEffectiveBac_({id:'P1'}, 10, 10).noBacMatched);
+    });
+  } finally {
+    DB.dieukien = dieukienBackup;
+  }
+
+  /* ---- snapPeriodFromDate: chuẩn hoá ranh giới kỳ (nền tảng của cơ chế chống trùng báo cáo) ---- */
+  test('snapPeriodFromDate: Tháng -> đúng ngày 1 và ngày cuối tháng', ()=>{
+    const r = snapPeriodFromDate('2026-07-15', 'Tháng');
+    assertEqual(r.from, '2026-07-01'); assertEqual(r.to, '2026-07-31');
+  });
+  test('snapPeriodFromDate: Quý -> đúng quý chứa ngày đó', ()=>{
+    const r = snapPeriodFromDate('2026-08-10', 'Quý'); // tháng 8 -> Quý 3 (7,8,9)
+    assertEqual(r.from, '2026-07-01'); assertEqual(r.to, '2026-09-30');
+  });
+  test('snapPeriodFromDate: "Tùy chọn" -> không tự quy đổi (trả null)', ()=>{
+    assertEqual(snapPeriodFromDate('2026-07-15', ''), null);
+  });
+
+  /* ---- Bài test tích hợp: computeReport() trên dữ liệu mua hàng + chương trình giả lập ---- */
+  const dbBackup = DB;
+  try{
+    DB = {
+      catalog: { mhck: [ { mamh:'SP001', tenhang:'Lốp Casu 001', thuonghieu:'CASU', nhomkh:'NO', loaisp:'NO', dactinh:'NO', congdung:'NO', quycach:'NO' } ], giacongbo: [] },
+      purchases: [
+        { ngay:'2026-07-05', mahang:'SP001', soluong:60, giatri:600000, nhacungcap:'NCC A' },
+        { ngay:'2026-07-20', mahang:'SP001', soluong:60, giatri:600000, nhacungcap:'NCC A' }
+      ],
+      programs: [ { id:'PT1', ma_chietkhau:'CT_TEST', dim_thuonghieu:'CASU', dim_nhomkh:'NO', dim_loaisp:'NO', dim_dactinh:'NO', dim_congdung:'NO', dim_quycach:'NO',
+                    sl_min:100, sl_max:0, dt_min:0, dt_max:0, dieukien_sldt:'AND', ht_chietkhau:'PERCENT_GIAMUA', tl_ck:5, ma_doanhthu:'', dt_kehoach:0 } ],
+      dieukien: [], doanhthu: [], kehoach: [], kehoachChiTiet: []
+    };
+    test('computeReport (tích hợp): SL=120 đạt bậc ≥100, tính đúng 5% x doanh thu', ()=>{
+      const rep = computeReport('2026-07-01','2026-07-31','', false, '', '');
+      const row = rep.find(r=>r.key==='prog_PT1');
+      assertTrue(!!row, 'phải có dòng cho chương trình CT_TEST');
+      assertTrue(row.dat, 'phải ĐẠT bậc vì tổng SL=120 ≥ 100');
+      assertEqual(row.sl, 120); assertEqual(row.dt, 1200000);
+      assertClose(row.tienck, 60000, 'Số tiền CK phải = 5% x 1.200.000');
+    });
+    test('computeReport (tích hợp): chưa đạt bậc khi SL dưới ngưỡng', ()=>{
+      DB.purchases = [{ ngay:'2026-07-05', mahang:'SP001', soluong:30, giatri:300000, nhacungcap:'NCC A' }];
+      const rep = computeReport('2026-07-01','2026-07-31','', false, '', '');
+      const row = rep.find(r=>r.key==='prog_PT1');
+      assertTrue(row && row.dat===false, 'SL=30 < 100 -> phải CHƯA đạt bậc');
+    });
+
+    /* ---- Chiết khấu lũy kế (chiết khấu bổ sung): all_or_reduced ---- */
+    DB.purchases = [
+      { ngay:'2026-01-10', mahang:'SP001', soluong:150, giatri:1500000, nhacungcap:'NCC A' },
+      { ngay:'2026-02-10', mahang:'SP001', soluong:100, giatri:1000000, nhacungcap:'NCC A' }
+    ];
+    DB.reportCKTH = [
+      { program_id:'PT1', thoidiem_chietkhau:'Tháng', thang_chietkhau:1, nam_chietkhau:2026, trangthai:'DAT', pct_ht_kh_dt:95 },
+      { program_id:'PT1', thoidiem_chietkhau:'Tháng', thang_chietkhau:2, nam_chietkhau:2026, trangthai:'DAT', pct_ht_kh_dt:95 }
+    ];
+    test('computeBonusDiscount (all_or_reduced): tất cả tháng đạt + bậc riêng đạt -> hưởng ĐỦ % bổ sung', ()=>{
+      const lk = { id:'LK1', ma_ck_chinh:'PT1', kieu_tinh:'all_or_reduced', sl_min:200, sl_max:0, dt_min:0, dt_max:0,
+        ck_bosung:2, ck_reduced_pct:50, hieuluctu:'2026-01-01', hieulucden:'2026-02-28' };
+      const r = computeBonusDiscount(lk, [1,2], 'Tháng', '2026-01-01', '2026-02-28');
+      assertTrue(r.ok && r.finalDat, 'phải ĐẠT (SL cả kỳ 250 ≥ 200 và cả 2 tháng đều đạt)');
+      assertTrue(r.allMonthsOk, 'cả 2 tháng đều đã lưu ĐẠT');
+      assertEqual(r.effectiveRatePct, 2, 'không bị giảm trừ -> hưởng đủ 2%');
+      assertClose(r.tienck, 2500000*0.02, 'Tiền CK bổ sung = 2% x tổng DT cả kỳ');
+    });
+    test('computeBonusDiscount (all_or_reduced): 1 tháng CHƯA đạt nhưng cả kỳ vẫn đạt bậc riêng -> GIẢM TRỪ theo ck_reduced_pct', ()=>{
+      DB.reportCKTH[1].trangthai = 'CHUA_DAT'; // tháng 2 chưa đạt
+      const lk = { id:'LK1', ma_ck_chinh:'PT1', kieu_tinh:'all_or_reduced', sl_min:200, sl_max:0, dt_min:0, dt_max:0,
+        ck_bosung:2, ck_reduced_pct:50, hieuluctu:'2026-01-01', hieulucden:'2026-02-28' };
+      const r = computeBonusDiscount(lk, [1,2], 'Tháng', '2026-01-01', '2026-02-28');
+      assertTrue(r.finalDat && r.isReduced, 'vẫn đạt nhưng ở mức giảm trừ');
+      assertEqual(r.effectiveRatePct, 1, 'giảm trừ 50% của 2% = 1%');
+      DB.reportCKTH[1].trangthai = 'DAT'; // khôi phục cho các test sau
+    });
+
+    /* ---- Chiết khấu lũy kế: dual_condition (2 điều kiện độc lập, cộng dồn %) ---- */
+    test('computeDualConditionBonus: chỉ đạt ĐK1 (theo tháng), CHƯA đạt ĐK2 (theo kỳ) -> chỉ cộng dk1_rate', ()=>{
+      const lk = { id:'LK2', ma_ck_chinh:'PT1', kieu_tinh:'dual_condition', dk1_pct_thang_min:90, dk1_rate:1,
+        dk2_pct_ky_min:110, dk2_rate:1.5, sl_min:0, sl_max:0, dt_min:0, dt_max:0, dt_kehoach:3000000,
+        hieuluctu:'2026-01-01', hieulucden:'2026-02-28' };
+      // Tổng DT cả kỳ = 2.500.000 / KH 3.000.000 = 83% < 110% -> ĐK2 KHÔNG đạt
+      const r = computeBonusDiscount(lk, [1,2], 'Tháng', '2026-01-01', '2026-02-28');
+      assertEqual(r.kieu_tinh, 'dual_condition');
+      assertTrue(r.dk1Met===true, 'cả 2 tháng đều ≥90% KH tháng (95%) -> ĐK1 đạt');
+      assertTrue(r.dk2Met===false, 'tổng kỳ 83% < 110% -> ĐK2 chưa đạt');
+      assertEqual(r.effectiveRatePct, 1, 'chỉ cộng dk1_rate=1%, không cộng dk2_rate');
+    });
+    test('computeDualConditionBonus: đạt CẢ 2 điều kiện -> CỘNG DỒN cả 2 tỷ lệ', ()=>{
+      const lk = { id:'LK2', ma_ck_chinh:'PT1', kieu_tinh:'dual_condition', dk1_pct_thang_min:90, dk1_rate:1,
+        dk2_pct_ky_min:110, dk2_rate:1.5, sl_min:0, sl_max:0, dt_min:0, dt_max:0, dt_kehoach:2000000,
+        hieuluctu:'2026-01-01', hieulucden:'2026-02-28' };
+      // Tổng DT cả kỳ = 2.500.000 / KH 2.000.000 = 125% ≥ 110% -> ĐK2 đạt
+      const r = computeBonusDiscount(lk, [1,2], 'Tháng', '2026-01-01', '2026-02-28');
+      assertTrue(r.dk1Met && r.dk2Met, 'phải đạt cả 2 điều kiện');
+      assertEqual(r.effectiveRatePct, 2.5, 'cộng dồn 1% + 1.5% = 2.5%, KHÔNG phải chọn max');
+    });
+
+    /* ---- findMonthReport_: DRAFT phải được ưu tiên hơn báo cáo CHÍNH THỨC đã lưu ---- */
+    test('findMonthReport_: ưu tiên DRAFT (mới tính) hơn DB.reportCKTH (đã lưu cũ)', ()=>{
+      DRAFT_REPORT_CKTH_ = [{ program_id:'PT1', thoidiem_chietkhau:'Tháng', thang_chietkhau:1, nam_chietkhau:2026, trangthai:'CHUA_DAT' }];
+      const rec = findMonthReport_('PT1','Tháng',1,2026);
+      assertEqual(rec.trangthai, 'CHUA_DAT', 'phải lấy từ draft (CHUA_DAT), không phải DB.reportCKTH (đang là DAT)');
+      DRAFT_REPORT_CKTH_ = [];
+      const rec2 = findMonthReport_('PT1','Tháng',1,2026);
+      assertEqual(rec2.trangthai, 'DAT', 'sau khi xoá draft phải rơi về đúng báo cáo chính thức đã lưu');
+    });
+  } finally {
+    DB = dbBackup;
+    DRAFT_REPORT_CKTH_ = [];
+  }
+
+  /* ---- enumeratePeriods_: tách khoảng hiệu lực thành từng kỳ chuẩn ---- */
+  test('enumeratePeriods_: Tháng -> tách đúng từng tháng trong khoảng hiệu lực', ()=>{
+    const p = enumeratePeriods_('2026-05-10', '2026-07-31', 'Tháng');
+    assertEqual(p.length, 3);
+    assertEqual(p[0].from, '2026-05-01'); assertEqual(p[0].to, '2026-05-31');
+    assertEqual(p[2].from, '2026-07-01'); assertEqual(p[2].to, '2026-07-31');
+  });
+  test('enumeratePeriods_: Quý -> tách đúng từng quý', ()=>{
+    const p = enumeratePeriods_('2026-01-01', '2026-09-30', 'Quý');
+    assertEqual(p.length, 3);
+    assertEqual(p[1].from, '2026-04-01'); assertEqual(p[1].to, '2026-06-30');
+  });
+  test('enumeratePeriods_: "Tùy chọn" (rỗng) -> KHÔNG tách, coi cả khoảng là 1 kỳ', ()=>{
+    const p = enumeratePeriods_('2026-01-01', '2026-06-30', '');
+    assertEqual(p.length, 1);
+    assertEqual(p[0].from, '2026-01-01'); assertEqual(p[0].to, '2026-06-30');
+  });
+  test('enumeratePeriods_: chưa khai Hiệu lực từ ngày -> trả mảng rỗng', ()=>{
+    assertEqual(enumeratePeriods_('', '2026-06-30', 'Tháng').length, 0);
+  });
+
+  /* ---- buildDedupPlan_: chọn đúng khoảng ngày hợp lệ, xoá đúng số dòng trùng ---- */
+  test('buildDedupPlan_: giữ khoảng khớp ranh giới kỳ chuẩn, loại khoảng bị lệch ngày', ()=>{
+    const dbBackup2 = DB;
+    try{
+      DB = Object.assign({}, DB, {
+        reportCKTH: [
+          { program_id:'PX', tu_ngay:'2026-07-01', den_ngay:'2026-07-30', thoidiem_chietkhau:'Tháng', thang_chietkhau:7, nam_chietkhau:2026, trangthai:'DAT', so_tien_chietkhau:1000 },
+          { program_id:'PX', tu_ngay:'2026-07-01', den_ngay:'2026-07-31', thoidiem_chietkhau:'Tháng', thang_chietkhau:7, nam_chietkhau:2026, trangthai:'DAT', so_tien_chietkhau:2000 }
+        ],
+        reportCKCT: []
+      });
+      const plan = buildDedupPlan_();
+      assertEqual(plan.removedCkth, 1, 'phải loại đúng 1 dòng trùng (khoảng ngày lệch: 07-30 thay vì 07-31)');
+      assertEqual(plan.finalCkth.length, 1);
+      assertEqual(plan.finalCkth[0].den_ngay, '2026-07-31', 'phải GIỮ đúng khoảng khớp ranh giới kỳ chuẩn (01/07-31/07), loại khoảng lệch (01/07-30/07)');
+    } finally {
+      DB = dbBackup2;
+    }
+  });
+
+  const okCount = results.filter(r=>r.ok).length;
+  openModal(`
+    <h3>Kết quả tự kiểm thử công thức chiết khấu</h3>
+    <div class="section-note" style="border-color:${okCount===results.length?'var(--emerald)':'var(--red)'};color:${okCount===results.length?'var(--emerald-dark)':'var(--red)'}">
+      ${okCount===results.length ? `✓ Toàn bộ ${results.length}/${results.length} test PASS. Các công thức cốt lõi đang hoạt động đúng như thiết kế.` : `⚠ ${results.length-okCount}/${results.length} test FAIL — có công thức đang tính SAI, xem chi tiết bên dưới trước khi dùng báo cáo.`}
+    </div>
+    <div class="mono" style="font-size:12.5px;padding:10px;background:var(--slate-50);border-radius:8px;border:1px solid var(--slate-200);max-height:360px;overflow:auto">
+      ${results.map(r=>`<div style="padding:3px 0;color:${r.ok?'var(--emerald-dark)':'var(--red)'}">${r.ok?'✓':'✗'} ${esc(r.name)}${r.ok?'':' — '+esc(r.err)}</div>`).join('')}
+    </div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:8px"><button class="btn btn-primary" onclick="closeModal()">Đóng</button></div>
+  `);
+}
+window.runFormulaTests = runFormulaTests;
+
 function defaultCatalog(){
   return {
     thuonghieu:[{ma:'NO',ten:'Không phân biệt / Khác'}],
@@ -729,55 +1121,55 @@ function ensureNO(){
   if(!DB.catalog.giacongbo) DB.catalog.giacongbo = [];
 }
 
-async function saveCatalog(){ 
-  return new Promise(res => {
-    google.script.run.withSuccessHandler((version) => {
-      writeCache(version, snapshotDB());
-      res(true);
-    }).saveCatalogData(DB.catalog);
+// TỐI ƯU (gộp code trùng lặp): trước đây mỗi hàm saveXxx() dưới đây là 1 khối Promise gần như giống
+// hệt nhau, chỉ khác tên hàm server + dữ liệu truyền vào. Nay dùng chung 1 hàm saveToSheet_() để giảm
+// trùng lặp và đảm bảo mọi nơi lưu đều cùng 1 cách xử lý phiên bản/cache.
+// SỬA LỖI: trước đây không có withFailureHandler — nếu server báo lỗi (VD "hệ thống đang bận xử lý
+// một lượt lưu khác" khi 2 người cùng lưu, hoặc từ chối quyền truy cập), Promise TREO VĨNH VIỄN, nút
+// Lưu không phản hồi mà cũng không có thông báo lỗi nào cho người dùng biết nguyên nhân. Nay bắt lỗi
+// rõ ràng và báo qua toast, đồng thời NÉM LẠI lỗi (reject) để nơi gọi (openXxxForm/saveXxxForm) có thể
+// tự xử lý thêm nếu cần (VD không đóng modal khi lưu thất bại).
+function saveToSheet_(serverFnName, dataRef){
+  return new Promise((res, rej) => {
+    google.script.run
+      .withSuccessHandler((version) => {
+        writeCache(version, snapshotDB());
+        res(true);
+      })
+      .withFailureHandler((err) => {
+        toast('⚠ Lưu thất bại: ' + (err && err.message ? err.message : err), 'err');
+        rej(err);
+      })
+      [serverFnName](dataRef);
   });
 }
-async function savePrograms(){ 
-  return new Promise(res => {
-    google.script.run.withSuccessHandler((version) => {
-      writeCache(version, snapshotDB());
-      res(true);
-    }).saveProgramsData(DB.programs);
-  });
+// SỬA LỖI HIỆU NĂNG: trước đây saveCatalog() luôn gửi NGUYÊN object DB.catalog (gồm cả MHCK và Giá
+// công bố — có thể hơn 1.300 dòng) lên server mỗi khi chỉ sửa 1 dòng ở 1 danh mục nhỏ (VD Thương
+// hiệu), khiến server ghi đè lại toàn bộ sheet MHCK/Giá công bố không cần thiết mỗi lần lưu, vừa
+// chậm vừa tốn quota Apps Script. Nay tách thành 3 hàm riêng — mỗi hàm chỉ gửi đúng phần dữ liệu
+// thực sự thay đổi:
+//  - saveCatalogDims(): 6 danh mục kích thước nhỏ (thương hiệu, nhóm hàng, loại SP, đặc tính, công
+//    dụng, quy cách) — dùng khi sửa/xóa các danh mục này.
+//  - saveMhck(): riêng bảng Mã hàng → Nhóm chiết khấu.
+//  - saveGiaCongBo(): riêng bảng Giá công bố NCC.
+async function saveCatalogDims(){
+  const dims = {};
+  DIM_KEYS.forEach(k => { dims[k] = DB.catalog[k]; });
+  return saveToSheet_('saveCatalogData', dims);
 }
-async function savePurchases(){ 
-  return new Promise(res => {
-    google.script.run.withSuccessHandler((version) => {
-      writeCache(version, snapshotDB());
-      res(true);
-    }).savePurchasesData(DB.purchases);
-  });
-}
-async function saveLuyKe(){
-  return new Promise(res => {
-    google.script.run.withSuccessHandler((version) => {
-      writeCache(version, snapshotDB());
-      res(true);
-    }).saveLuyKeData(DB.programsLuyKe);
-  });
-}
+async function saveMhck(){ return saveToSheet_('saveMhckData', DB.catalog.mhck); }
+async function saveGiaCongBo(){ return saveToSheet_('saveGiaCongBoData', DB.catalog.giacongbo); }
+async function savePrograms(){ return saveToSheet_('saveProgramsData', DB.programs); }
+async function savePurchases(){ return saveToSheet_('savePurchasesData', DB.purchases); }
+async function saveLuyKe(){ return saveToSheet_('saveLuyKeData', DB.programsLuyKe); }
 // THEO MÔ HÌNH 3 TẦNG: lưu Tầng 1 (Danh mục chương trình) và Tầng 3 (Bậc điều kiện con)
-async function saveChuongTrinh(){
-  return new Promise(res => {
-    google.script.run.withSuccessHandler((version) => {
-      writeCache(version, snapshotDB());
-      res(true);
-    }).saveChuongTrinhData(DB.chuongtrinh);
-  });
-}
-async function saveDieuKien(){
-  return new Promise(res => {
-    google.script.run.withSuccessHandler((version) => {
-      writeCache(version, snapshotDB());
-      res(true);
-    }).saveDieuKienData(DB.dieukien);
-  });
-}
+async function saveChuongTrinh(){ return saveToSheet_('saveChuongTrinhData', DB.chuongtrinh); }
+async function saveDieuKien(){ return saveToSheet_('saveDieuKienData', DB.dieukien); }
+// MỚI: lưu Danh mục tổng hợp doanh thu sản lượng (Mã doanh thu) + Danh mục kế hoạch doanh thu
+async function saveDoanhThu(){ return saveToSheet_('saveDoanhThuData', DB.doanhthu); }
+async function saveKeHoach(){ return saveToSheet_('saveKeHoachData', DB.kehoach); }
+// MỚI: lưu Chi tiết kế hoạch (bảng con theo từng kỳ Tháng/Quý/6 Tháng/Năm hoặc kỳ tùy chỉnh)
+async function saveKeHoachChiTiet(){ return saveToSheet_('saveKeHoachChiTietData', DB.kehoachChiTiet); }
 // Lưu báo cáo chiết khấu (cộng dồn trên Sheet) — cập nhật lại DB.reportCKTH/CKCT cục bộ theo kiểu
 // upsert tương tự để lần "Tính chiết khấu bổ sung" tiếp theo trong CÙNG phiên làm việc dùng được ngay,
 // không cần đợi tải lại từ Sheet.
@@ -788,20 +1180,34 @@ function upsertLocal(arr, rows, keyFn){
     if(i>-1) arr[i] = Object.assign({}, arr[i], r); else arr.push(r);
   });
 }
+// SỬA LỖI: bổ sung withFailureHandler ở cả 2 lượt gọi (trước đây thiếu, lỗi từ server bị treo im lặng
+// — xem giải thích chi tiết tại saveToSheet_ phía trên).
 async function saveReportToSheet(ckthRows, ckctRows){
-  await new Promise(res=>{
-    google.script.run.withSuccessHandler((version)=>{
-      upsertLocal(DB.reportCKTH, ckthRows, r=>[r.program_id,r.tu_ngay,r.den_ngay].join('||'));
-      writeCache(version, snapshotDB());
-      res(true);
-    }).saveReportCKTH(ckthRows);
+  await new Promise((res, rej)=>{
+    google.script.run
+      .withSuccessHandler((version)=>{
+        upsertLocal(DB.reportCKTH, ckthRows, r=>[r.program_id,r.tu_ngay,r.den_ngay].join('||'));
+        writeCache(version, snapshotDB());
+        res(true);
+      })
+      .withFailureHandler((err)=>{
+        toast('⚠ Lưu báo cáo tổng hợp thất bại: ' + (err && err.message ? err.message : err), 'err');
+        rej(err);
+      })
+      .saveReportCKTH(ckthRows);
   });
-  await new Promise(res=>{
-    google.script.run.withSuccessHandler((version)=>{
-      upsertLocal(DB.reportCKCT, ckctRows, r=>[r.program_id,r.tu_ngay,r.den_ngay,r.mahang].join('||'));
-      writeCache(version, snapshotDB());
-      res(true);
-    }).saveReportCKCT(ckctRows);
+  await new Promise((res, rej)=>{
+    google.script.run
+      .withSuccessHandler((version)=>{
+        upsertLocal(DB.reportCKCT, ckctRows, r=>[r.program_id,r.tu_ngay,r.den_ngay,r.mahang].join('||'));
+        writeCache(version, snapshotDB());
+        res(true);
+      })
+      .withFailureHandler((err)=>{
+        toast('⚠ Lưu báo cáo chi tiết thất bại: ' + (err && err.message ? err.message : err), 'err');
+        rej(err);
+      })
+      .saveReportCKCT(ckctRows);
   });
 }
 
@@ -820,31 +1226,46 @@ const ICON = {
   calc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h.01M12 19h.01M16 19h.01"/></svg>',
   price:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41L13 21l-9-9V4h8l8.59 8.59a2 2 0 010 2.82z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>',
   scale:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M7 21h10"/><path d="M5 7l-3 6a3 3 0 006 0l-3-6zM19 7l-3 6a3 3 0 006 0l-3-6z"/><path d="M5 7h14"/></svg>',
-  layers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg>'
+  layers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg>',
+  plan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18"/><path d="M8 14.5l2.5 2.5L16 12"/></svg>'
 };
 
 function renderShell(){
-  const nav = [
-    {id:'dashboard', ic:ICON.dash, label:'Tổng quan'},
-    {id:'catalog', ic:ICON.cat, label:'Danh mục nhóm CK', count:DB.catalog.mhck.length},
-    {id:'giacongbo', ic:ICON.price, label:'Giá công bố NCC', count: DB._giacongboLoaded ? DB.catalog.giacongbo.length : null, badgeText: DB._giacongboLoaded ? null : 'chưa tải'},
-    {id:'chuongtrinh', ic:ICON.layers, label:'Danh mục chương trình', count:DB.chuongtrinh.length},
-    {id:'programs', ic:ICON.prog, label:'Mã chiết khấu', count:DB.programs.length},
-    {id:'luyke', ic:ICON.layers, label:'Chiết khấu lũy kế', count:DB.programsLuyKe.length},
-    {id:'purchases', ic:ICON.ledger, label:'Sổ chi tiết mua hàng', count: DB._purchasesLoaded ? DB.purchases.length : null, badgeText: DB._purchasesLoaded ? null : 'chưa tải'},
-    {id:'doichieu', ic:ICON.scale, label:'Đối chiếu Giá mua - Giá CB'},
-    {id:'report', ic:ICON.calc, label:'Tính chiết khấu'},
-    {id:'baocao', ic:ICON.report, label:'Báo cáo chiết khấu'},
+  const navGroups = [
+    { items: [
+      {id:'dashboard', ic:ICON.dash, label:'Tổng quan'},
+    ]},
+    { label:'Danh mục', items: [
+      {id:'catalog', ic:ICON.cat, label:'Danh mục nhóm chiết khấu', count:DB.catalog.mhck.length},
+      {id:'doanhthu', ic:ICON.scale, label:'Danh mục doanh thu sản lượng', count:DB.doanhthu.length},
+      {id:'kehoach', ic:ICON.plan, label:'Danh mục kế hoạch', count:DB.kehoach.length},
+    ]},
+    { label:'Quản lý dữ liệu', items: [
+      {id:'giacongbo', ic:ICON.price, label:'Giá công bố NCC', count: DB._giacongboLoaded ? DB.catalog.giacongbo.length : null, badgeText: DB._giacongboLoaded ? null : 'chưa tải'},
+      {id:'purchases', ic:ICON.ledger, label:'Sổ chi tiết mua hàng', count: DB._purchasesLoaded ? DB.purchases.length : null, badgeText: DB._purchasesLoaded ? null : 'chưa tải'},
+    ]},
+    { label:'Chiết khấu', items: [
+      {id:'chuongtrinh', ic:ICON.layers, label:'Danh mục chương trình', count:DB.chuongtrinh.length},
+      {id:'programs', ic:ICON.prog, label:'Mã chiết khấu', count:DB.programs.length+DB.programsLuyKe.length},
+      {id:'report', ic:ICON.calc, label:'Tính chiết khấu'},
+    ]},
+    { label:'Báo cáo', items: [
+      {id:'doichieu', ic:ICON.scale, label:'Đối chiếu giá mua - giá công bố'},
+      {id:'baocao', ic:ICON.report, label:'Báo cáo chiết khấu'},
+    ]},
   ];
+  const nav = navGroups.flatMap(g=>g.items); // vẫn giữ mảng phẳng để phần code khác (nếu tham chiếu) không bị vỡ
   const titles = {
     dashboard:['Tổng quan','Tình hình chương trình chiết khấu & dữ liệu mua hàng (Đồng bộ Drive)'],
     catalog:['Danh mục nhóm chiết khấu','Khai báo thương hiệu, nhóm hàng, loại SP và gắn mã hàng vào nhóm chiết khấu'],
     giacongbo:['Giá công bố nhà cung cấp','Khai báo giá công bố theo từng mã hàng (theo thông báo NCC) để tính chiết khấu % theo giá công bố'],
     chuongtrinh:['Danh mục chương trình','Tầng 1 — khai báo chương trình (mã, nội dung, thời hạn), chứa nhiều mã chiết khấu con bên dưới'],
+    doanhthu:['Danh mục doanh thu sản lượng','Khai báo tổ hợp Thương hiệu/Nhóm hàng/Loại SP/Đặc tính/Công dụng/Quy cách + Thời điểm chiết khấu -> tạo "Mã doanh thu" dùng chung cho Mã chiết khấu'],
+    kehoach:['Danh mục kế hoạch','Khai báo Doanh thu/Sản lượng kế hoạch theo từng kỳ và theo Mã doanh thu — hệ thống tự tham chiếu khi tính chiết khấu'],
     programs:['Mã chiết khấu','Tầng 2 — khai báo mã chiết khấu theo thông báo NCC, có thể liên kết vào 1 chương trình và có nhiều bậc điều kiện con'],
     luyke:['Chiết khấu lũy kế','Khai báo điều kiện chiết khấu thưởng thêm khi đạt đủ các tháng lũy kế của 1 chương trình chính'],
     purchases:['Sổ chi tiết mua hàng','Nạp dữ liệu mua hàng (từ Excel / Google Sheet) để đối chiếu chiết khấu'],
-    doichieu:['Đối chiếu Giá mua - Giá công bố','So sánh giá mua thực tế bình quân với giá công bố NCC theo từng mặt hàng và từng phiếu mua hàng'],
+    doichieu:['Đối chiếu giá mua - giá công bố','So sánh giá mua thực tế bình quân với giá công bố NCC theo từng mặt hàng và từng phiếu mua hàng'],
     report:['Tính chiết khấu','Tính chiết khấu thực tế đạt được theo từng kỳ, đối chiếu chương trình đã khai báo'],
     baocao:['Báo cáo chiết khấu','Phân tích tổng hợp từ dữ liệu đã lưu (REPORT_CKTH/CKCT): theo mặt hàng, theo mã chiết khấu, bảng hạch toán, đối chiếu nhiều kỳ liền kề'],
   };
@@ -860,12 +1281,14 @@ function renderShell(){
         <div class="sub">Hệ thống Cloud Apps Script</div>
       </div>
       <div class="nav">
-        <div class="nav-label">Điều hướng</div>
-        ${nav.map(n=>`
-          <div class="nav-item ${UI.tab===n.id?'active':''}" data-nav="${n.id}">
-            <span class="ic">${n.ic}</span><span>${n.label}</span>
-            ${n.count!=null?`<span class="badge-count">${n.count}</span>`:(n.badgeText?`<span class="badge-count" style="background:var(--slate-300);color:var(--slate-600)">${n.badgeText}</span>`:'')}
-          </div>`).join('')}
+        ${navGroups.map(g=>`
+          ${g.label ? `<div class="nav-label">${g.label}</div>` : ''}
+          ${g.items.map(n=>`
+            <div class="nav-item ${UI.tab===n.id?'active':''}" data-nav="${n.id}">
+              <span class="ic">${n.ic}</span><span>${n.label}</span>
+              ${n.count!=null?`<span class="badge-count">${n.count}</span>`:(n.badgeText?`<span class="badge-count" style="background:var(--slate-300);color:var(--slate-600)">${n.badgeText}</span>`:'')}
+            </div>`).join('')}
+        `).join('')}
       </div>
       <div class="sidebar-foot">
         <div class="storage-pill"><span class="dot"></span> Dữ liệu lưu trên Google Sheets</div>
@@ -873,6 +1296,7 @@ function renderShell(){
         <button class="btn btn-sm" style="width:100%;margin-bottom:6px;background:var(--navy-800);border-color:var(--navy-700);color:var(--slate-200)" onclick="forceRefreshData()">${ICON.download} Làm mới dữ liệu</button>
         <button class="btn btn-sm" style="width:100%;margin-bottom:8px;background:var(--navy-800);border-color:var(--navy-700);color:var(--slate-200)" onclick="showDiagnostic()">🔍 Chẩn đoán kết nối</button>
         <button class="btn btn-sm" style="width:100%;margin-bottom:8px;background:var(--navy-800);border-color:var(--navy-700);color:var(--slate-200)" onclick="pingTest10x()">📶 Test kết nối cơ bản (10 lần)</button>
+        <button class="btn btn-sm" style="width:100%;margin-bottom:8px;background:var(--navy-800);border-color:var(--navy-700);color:var(--slate-200)" onclick="runFormulaTests()">🧪 Test công thức chiết khấu</button>
         Áp dụng cho hàng Casumina / NPPDL &amp; đối tác lốp ô tô
       </div>
     </div>
@@ -898,30 +1322,31 @@ function loadingPane_(msg){
 async function routeContent(){
   if(UI.tab==='dashboard'){
     // Dashboard cần Mua hàng để tính doanh thu tháng này -> tải trước nếu chưa có
-    if(!DB._purchasesLoaded){ loadingPane_('Đang tải dữ liệu Mua hàng cho Tổng quan...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
+    if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng cho Tổng quan...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
     renderDashboard();
   }
   else if(UI.tab==='catalog') renderCatalog();
   else if(UI.tab==='chuongtrinh') renderChuongTrinh();
+  else if(UI.tab==='doanhthu') renderDoanhThu();
+  else if(UI.tab==='kehoach') renderKeHoach();
   else if(UI.tab==='giacongbo'){
     if(!DB._giacongboLoaded){ loadingPane_('Đang tải dữ liệu Giá công bố NCC...'); try{ await ensureGiaCongBoLoaded(); }catch(e){ toast('Lỗi tải Giá công bố: '+(e.message||e),'err'); } }
     renderGiaCongBo();
   }
-  else if(UI.tab==='programs') renderPrograms();
-  else if(UI.tab==='luyke') renderLuyKe();
+  else if(UI.tab==='programs') renderProgramsHub();
   else if(UI.tab==='purchases') renderPurchases(); // renderPurchases tự xử lý tải khi bấm "Áp dụng bộ lọc"
   else if(UI.tab==='doichieu'){
     if(!DB._giacongboLoaded){ loadingPane_('Đang tải dữ liệu Giá công bố NCC...'); try{ await ensureGiaCongBoLoaded(); }catch(e){ toast('Lỗi tải Giá công bố: '+(e.message||e),'err'); } }
-    if(!DB._purchasesLoaded){ loadingPane_('Đang tải dữ liệu Mua hàng...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
+    if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
     renderPriceCompare();
   }
   else if(UI.tab==='report'){
     if(!DB._giacongboLoaded){ loadingPane_('Đang tải dữ liệu Giá công bố NCC cho Tính chiết khấu...'); try{ await ensureGiaCongBoLoaded(); }catch(e){ toast('Lỗi tải Giá công bố: '+(e.message||e),'err'); } }
-    if(!DB._purchasesLoaded){ loadingPane_('Đang tải dữ liệu Mua hàng cho Tính chiết khấu...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
+    if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng cho Tính chiết khấu...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
     renderReport();
   }
   else if(UI.tab==='baocao'){
-    if(!DB._purchasesLoaded){ loadingPane_('Đang tải dữ liệu Mua hàng cho Báo cáo...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
+    if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng cho Báo cáo...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
     renderBaoCao();
   }
 }
@@ -1073,8 +1498,12 @@ function evaluateProgramForPeriod(prog, fromDate, toDate, supplierFilter){
     return { dat:false, totalSl, totalDt, hoanthanh:null, matchingSkus, reason:`Không đạt bậc nào trong ${bacList.length} bậc đã khai báo`, bacList, matchedBac:null };
   }
   const bracketChk = checkSlDtBracket(effective, totalSl, totalDt);
-  const dtkh = Number(effective.dt_kehoach||0);
+  const khRef = lookupKeHoach_(prog.ma_doanhthu, toDate || fromDate);
+  const dtkh = khRef ? Number(khRef.dt_kehoach||0) : Number(effective.dt_kehoach||0);
   const hoanthanh = dtkh ? (totalDt/dtkh*100) : null;
+  const dtkhSource = khRef
+    ? { loai:'kehoach', ma_kehoach: khRef.parent?.ma_kehoach || '', ky: khRef.ky || null }
+    : (dtkh ? { loai:'chuongtrinh' } : { loai:'none' });
   let datKH = true;
   if(dtkh && hoanthanh!=null){
     const mn = (effective.pct_kh_min===''||effective.pct_kh_min==null) ? -Infinity : Number(effective.pct_kh_min);
@@ -1082,7 +1511,7 @@ function evaluateProgramForPeriod(prog, fromDate, toDate, supplierFilter){
     if(hoanthanh<mn || hoanthanh>mx) datKH = false;
   }
   const dat = bracketChk.dat && datKH;
-  return { dat, datBac:bracketChk.dat, datKH, slDat:bracketChk.slDat, dtDat:bracketChk.dtDat, sldtLogic:bracketChk.logic, totalSl, totalDt, hoanthanh, matchingSkus, effectiveProg: effective, bacList, matchedBac };
+  return { dat, datBac:bracketChk.dat, datKH, slDat:bracketChk.slDat, dtDat:bracketChk.dtDat, sldtLogic:bracketChk.logic, totalSl, totalDt, hoanthanh, dtkhSource, matchingSkus, effectiveProg: effective, bacList, matchedBac };
 }
 function ttCkLabel(v){
   return TT_CK_OPTIONS.find(o=>o.v===v)?.l || v || '';
@@ -1168,8 +1597,23 @@ function computeReport(fromDate, toDate, supplierFilter, onlyMapped, programFilt
     const bracketChk = checkSlDtBracket(effProg, totalSl, totalDt);
     const datBac = noBacMatched ? false : bracketChk.dat;
 
-    const dtkh = Number(effProg.dt_kehoach||0);
+    // SỬA LỖI HIỂN THỊ: khi mã chiết khấu có bậc con nhưng KHÔNG bậc nào khớp SL/DT thực tế, không nên
+    // hiện "% hoàn thành kế hoạch" tính theo dt_kehoach của CHÍNH mã chiết khấu (không liên quan, dễ gây
+    // hiểu nhầm) — để trống, chỉ rõ nguyên nhân là chưa khớp bậc nào.
+    const khRef = noBacMatched ? null : lookupKeHoach_(prog.ma_doanhthu, toDate || fromDate);
+    const dtkh = noBacMatched ? 0 : (khRef ? Number(khRef.dt_kehoach||0) : Number(effProg.dt_kehoach||0));
     const hoanthanh = dtkh ? (totalDt/dtkh*100) : null;
+    // THEO YÊU CẦU: minh bạch hoá nguồn Doanh thu kế hoạch dùng để tính %hoàn thành KH — trước đây
+    // dtkh được lấy ngầm (ưu tiên Danh mục kế hoạch, không có thì rơi về số khai trực tiếp trên Mã
+    // chiết khấu/bậc), người xem báo cáo không biết con số đang dùng lấy từ đâu, dễ nhầm khi có nhiều
+    // kế hoạch trùng Mã doanh thu hoặc khi quên cập nhật Danh mục kế hoạch cho kỳ mới. Nay gắn kèm
+    // dtkhSource mô tả rõ 1 trong 3 trường hợp, hiển thị dạng tooltip cạnh %Hoàn thành KH trên bảng kết
+    // quả (xem renderReportResult) và cột riêng khi xuất Excel (xem exportReportXlsx).
+    const dtkhSource = noBacMatched ? null : (
+      khRef
+        ? { loai:'kehoach', ma_kehoach: khRef.parent?.ma_kehoach || '', ky: khRef.ky || null }
+        : (dtkh ? { loai:'chuongtrinh' } : { loai:'none' })
+    );
 
     // Kiểm tra thêm điều kiện % Kế hoạch Min-Max (nếu chương trình có khai báo Doanh thu kế hoạch
     // và khoảng % KH): % hoàn thành kế hoạch phải nằm trong [%KH Min, %KH Max] thì mới được tính CK.
@@ -1181,10 +1625,17 @@ function computeReport(fromDate, toDate, supplierFilter, onlyMapped, programFilt
     }
     const dat = datBac && datKH;
 
-    // BƯỚC 3: Nếu đạt bậc VÀ đạt khoảng %KH -> tính tiền CK cho TỪNG mã hàng thuộc phạm vi, rồi SUM lại
+    // BƯỚC 3: MỚI — nếu "Mã doanh thu tính chiết khấu" khác "Mã doanh thu điều kiện", doanh thu dùng
+    // để nhân tỷ lệ % được lấy theo tổ hợp thuộc tính RIÊNG đó, không phải toàn bộ phạm vi đã dùng để
+    // xét đạt bậc (VD: xét SL/DT trên toàn đơn hàng nhưng chỉ trả CK cho 1 nhóm sản phẩm cụ thể).
     let skuDetails = [], tienck = 0;
     if(dat){
-      skuDetails = matchingSkus.map(s=>skuDetailRow(s, effProg)).sort((a,b)=>b.tienck-a.tienck);
+      let baseSkus = matchingSkus;
+      if(prog.ma_doanhthu_tinhck && prog.ma_doanhthu_tinhck !== prog.ma_doanhthu){
+        const tinhCkDims = doanhThuDims_(prog.ma_doanhthu_tinhck);
+        if(tinhCkDims) baseSkus = matchedSkus.filter(s=>dimsMatch(s.dims, tinhCkDims));
+      }
+      skuDetails = baseSkus.map(s=>skuDetailRow(s, effProg)).sort((a,b)=>b.tienck-a.tienck);
       tienck = skuDetails.reduce((a,x)=>a+x.tienck,0);
     }
     let hasNCCany = false, cbGTsum=0, cbSLsum=0;
@@ -1196,7 +1647,7 @@ function computeReport(fromDate, toDate, supplierFilter, onlyMapped, programFilt
       program: effProg, matched:true, dat, datBac, datKH,
       slDat: bracketChk.slDat, dtDat: bracketChk.dtDat, sldtLogic: bracketChk.logic,
       sl: totalSl, dt: totalDt, soMaHang: matchingSkus.length,
-      tienck, dtkh, hoanthanh,
+      tienck, dtkh, hoanthanh, dtkhSource,
       giaMuaTB: giaMuaBinhQuan(totalSl,totalDt),
       giaCongBoTB: cbSLsum ? cbGTsum/cbSLsum : 0,
       coGiaCongBo: cbSLsum>0, hasNCC: hasNCCany,
@@ -1435,7 +1886,7 @@ async function saveDimForm(dimKey, idx){
     if(DB.catalog[dimKey].some(x=>norm(x.ma)===norm(ma))){ toast('Mã đã tồn tại','err'); return; }
     DB.catalog[dimKey].push(row);
   }
-  await saveCatalog();
+  await saveCatalogDims();
   closeModal(); toast('Đã lưu dữ liệu lên đám mây','ok'); renderCatalog();
 }
 window.openDimForm = openDimForm;
@@ -1444,7 +1895,7 @@ window.editDimRow = (dimKey,i)=>openDimForm(dimKey,i);
 window.deleteDimRow = async (dimKey,i)=>{
   if(!confirm('Xóa mục này khỏi bộ nhớ đám mây?')) return;
   DB.catalog[dimKey].splice(i,1);
-  await saveCatalog(); toast('Đã xóa thành công','ok'); renderCatalog();
+  await saveCatalogDims(); toast('Đã xóa thành công','ok'); renderCatalog();
 };
 
 // Hàm lọc dùng chung cho danh sách Mã hàng→Nhóm CK — tái sử dụng ở cả renderMhckResults() và khi
@@ -1635,7 +2086,7 @@ window.applyMhckBulkAssign = async function(){
   });
   const n = UI._mhckSelected.size;
   UI._mhckSelected = new Set();
-  await saveCatalog();
+  await saveMhck();
   toast(`Đã gán cho ${n} dòng`,'ok');
   renderMhckResults();
 };
@@ -1684,14 +2135,14 @@ async function saveMhckForm(idx){
     if(DB.catalog.mhck.some(x=>norm(x.mamh)===norm(mamh))){ toast('Mã hàng đã tồn tại','err'); return; }
     DB.catalog.mhck.push(row);
   }
-  await saveCatalog();
+  await saveMhck();
   closeModal(); toast('Đã lưu dữ liệu','ok'); renderCatalog();
 }
 window.saveMhckForm = saveMhckForm;
 window.deleteMhckRow = async (idx)=>{
   if(!confirm('Xóa mã hàng này khỏi danh mục nhóm chiết khấu đám mây?')) return;
   DB.catalog.mhck.splice(idx,1);
-  await saveCatalog(); toast('Đã xóa dữ liệu','ok'); renderCatalog();
+  await saveMhck(); toast('Đã xóa dữ liệu','ok'); renderCatalog();
 };
 
 /* ============================ GIÁ CÔNG BỐ NCC (theo Mã MH) ============================ */
@@ -1747,7 +2198,7 @@ function renderGiaCongBo(){
   document.getElementById('btnClearGCB').onclick = async () => {
     if(!confirm('Xóa toàn bộ dữ liệu giá công bố hiện có trên đám mây?')) return;
     DB.catalog.giacongbo = [];
-    await saveCatalog(); toast('Đã xóa toàn bộ giá công bố','ok'); renderGiaCongBo();
+    await saveGiaCongBo(); toast('Đã xóa toàn bộ giá công bố','ok'); renderGiaCongBo();
   };
 
   const q = UI._gcbSearch || '';
@@ -1841,14 +2292,14 @@ async function saveGiaCongBoForm(idx){
   };
   if(idx!=null) DB.catalog.giacongbo[idx] = row;
   else DB.catalog.giacongbo.push(row);
-  await saveCatalog();
+  await saveGiaCongBo();
   closeModal(); toast('Đã lưu giá công bố','ok'); renderGiaCongBo();
 }
 window.saveGiaCongBoForm = saveGiaCongBoForm;
 window.deleteGiaCongBoRow = async (idx)=>{
   if(!confirm('Xóa bản ghi giá công bố này?')) return;
   DB.catalog.giacongbo.splice(idx,1);
-  await saveCatalog(); toast('Đã xóa dữ liệu','ok'); renderGiaCongBo();
+  await saveGiaCongBo(); toast('Đã xóa dữ liệu','ok'); renderGiaCongBo();
 };
 
 async function handleGiaCongBoFile(file){
@@ -1877,7 +2328,7 @@ async function handleGiaCongBoFile(file){
       if(i>-1){ DB.catalog.giacongbo[i] = rec; updated++; }
       else { DB.catalog.giacongbo.push(rec); added++; }
     });
-    await saveCatalog();
+    await saveGiaCongBo();
     toast(`Đã nạp giá công bố: ${added} dòng mới, ${updated} dòng cập nhật`, 'ok');
     renderGiaCongBo();
   }catch(err){ toast('Lỗi đọc tệp giá công bố: ' + err.message, 'err'); }
@@ -1915,7 +2366,8 @@ function renderChuongTrinh(){
       <td>${fmtDate(ct.tu_ngay)} → ${fmtDate(ct.den_ngay)}</td>
       <td>${dangHieuLuc?'<span class="tag tag-ok">Đang hiệu lực</span>':'<span class="tag">Hết/Chưa hiệu lực</span>'}</td>
       <td class="num mono">${soMaCK} mã CK${soLuyKe?` + ${soLuyKe} lũy kế`:''}</td>
-      <td style="width:70px"><div class="rowline">
+      <td style="width:100px"><div class="rowline">
+        <span class="small-x" onclick="openChuongTrinhDetail('${ct.id}')" title="Xem chi tiết & tổng hợp chiết khấu">${ICON.report||'📊'}</span>
         <span class="small-x" onclick="openChuongTrinhForm(${i})">${ICON.edit}</span>
         <span class="small-x" onclick="deleteChuongTrinhRow(${i})">${ICON.trash}</span>
       </div></td>
@@ -1979,6 +2431,643 @@ window.deleteChuongTrinhRow = async (idx)=>{
   await saveChuongTrinh(); toast('Đã xóa','ok'); renderChuongTrinh();
 };
 
+// THEO YÊU CẦU GỐC: "tạo danh mục chương trình... bao gồm các chiết khấu con (kể cả chiết khấu lũy
+// kế), để có thể xem báo cáo chương trình chiết khấu trong năm". Trước đây Tầng 1 chỉ ĐẾM số lượng —
+// nay xem được ĐẦY ĐỦ chi tiết từng mã chiết khấu + lũy kế con, và TỔNG tiền chiết khấu đã lưu (gộp cả
+// 2 loại) trong suốt thời hạn chương trình, không cần cộng tay từ nhiều báo cáo rời rạc.
+function openChuongTrinhDetail(ctId){
+  const ct = DB.chuongtrinh.find(x=>x.id===ctId);
+  if(!ct) return;
+  const linkedPrograms = DB.programs.filter(p=>p.chuongtrinh_id===ctId);
+  const linkedLuyKe = DB.programsLuyKe.filter(lk=>linkedPrograms.some(p=>p.id===lk.ma_ck_chinh));
+  // Mỗi "đơn vị" (mã chiết khấu chính, hoặc lũy kế con) có 1 program_id riêng dùng để tra REPORT_CKTH
+  const units = [
+    ...linkedPrograms.map(p=>({ id:p.id, ten:p.ma_chietkhau, loai:'Mã chiết khấu', soBac: DB.dieukien.filter(d=>d.program_id===p.id).length })),
+    ...linkedLuyKe.map(lk=>{
+      const bp = DB.programs.find(p=>p.id===lk.ma_ck_chinh);
+      return { id:lk.id, ten:(bp?bp.ma_chietkhau:'?')+'_BOSUNG', loai:'Chiết khấu lũy kế', soBac:0 };
+    })
+  ];
+  const rowsHtml = units.map(u=>{
+    const reports = DB.reportCKTH.filter(r=>String(r.program_id)===String(u.id));
+    const tongCK = reports.reduce((s,r)=>s+(Number(r.so_tien_chietkhau)||0),0);
+    const soThangDaLuu = reports.length;
+    const soThangDat = reports.filter(r=>norm(r.trangthai)==='DAT').length;
+    return `<tr>
+      <td>${esc(u.ten)}</td>
+      <td><span class="tag ${u.loai==='Chiết khấu lũy kế'?'tag-gold':''}">${esc(u.loai)}</span>${u.soBac?` <span class="hint">(${u.soBac} bậc)</span>`:''}</td>
+      <td class="num mono">${soThangDaLuu} kỳ đã lưu</td>
+      <td class="num mono">${soThangDat}/${soThangDaLuu} đạt</td>
+      <td class="num mono" style="color:var(--emerald-dark);font-weight:600">${fmtVND(tongCK)}</td>
+    </tr>`;
+  }).join('');
+  const grandTotal = units.reduce((s,u)=>{
+    const reports = DB.reportCKTH.filter(r=>String(r.program_id)===String(u.id));
+    return s + reports.reduce((s2,r)=>s2+(Number(r.so_tien_chietkhau)||0),0);
+  },0);
+  openModal(`
+    <h3>Chi tiết chương trình — ${esc(ct.ma_chuongtrinh)}</h3>
+    <div class="section-note">${esc(ct.noidung||'(chưa có mô tả)')} · Thời hạn: ${fmtDate(ct.tu_ngay)} → ${fmtDate(ct.den_ngay)}</div>
+    <div class="grid grid-2" style="margin-bottom:12px">
+      <div class="kpi"><div class="lbl">Tổng đơn vị chiết khấu</div><div class="val">${units.length}</div><div class="sub">${linkedPrograms.length} mã chiết khấu + ${linkedLuyKe.length} lũy kế</div></div>
+      <div class="kpi accent-gold"><div class="lbl">Tổng tiền chiết khấu đã lưu (cả chương trình)</div><div class="val mono" style="font-size:19px">${fmtVND(grandTotal)}</div><div class="sub">Cộng dồn toàn bộ kỳ đã "Lưu báo cáo"</div></div>
+    </div>
+    ${units.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Tên</th><th>Loại</th><th class="num">Số kỳ đã lưu</th><th class="num">Đạt/Tổng kỳ</th><th class="num">Tổng tiền CK</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table></div>` : `<div class="empty">Chương trình này chưa có mã chiết khấu nào liên kết. Vào tab "Mã chiết khấu" để liên kết vào chương trình này.</div>`}
+    <div class="hint" style="margin-top:10px">Số liệu lấy từ các kỳ đã bấm "Lưu báo cáo"/"Lưu báo cáo bổ sung" — nếu chưa lưu đủ các tháng/quý trong năm, tổng tiền ở đây sẽ chưa phản ánh đầy đủ cả năm.</div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:8px"><button class="btn btn-primary" onclick="closeModal()">Đóng</button></div>
+  `);
+}
+window.openChuongTrinhDetail = openChuongTrinhDetail;
+
+/* ============================ DANH MỤC TỔNG HỢP DOANH THU SẢN LƯỢNG (MÃ DOANH THU) ============================ */
+function doanhThuDims_(maDoanhThuId){
+  const dt = (DB.doanhthu||[]).find(x=>x.id===maDoanhThuId);
+  if(!dt) return null;
+  return {thuonghieu:dt.dim_thuonghieu,nhomkh:dt.dim_nhomkh,loaisp:dt.dim_loaisp,dactinh:dt.dim_dactinh,congdung:dt.dim_congdung,quycach:dt.dim_quycach};
+}
+function doanhThuLabel(id){
+  const dt = (DB.doanhthu||[]).find(x=>x.id===id);
+  if(!dt) return '(không xác định)';
+  return (dt.ma||dt.id) + (dt.ten?(' — '+dt.ten):'');
+}
+function makeUniqueMaDoanhThu_(){
+  let n = (DB.doanhthu||[]).length + 1;
+  const exists = (ma)=> (DB.doanhthu||[]).some(x=>norm(x.ma)===norm(ma));
+  let ma = 'DT' + String(n).padStart(3,'0');
+  while(exists(ma)){ n++; ma = 'DT' + String(n).padStart(3,'0'); }
+  return ma;
+}
+function findOrCreateDoanhThu_(dims, thoidiem, tenGoiY){
+  const found = (DB.doanhthu||[]).find(x=>
+    DIM_KEYS.every(k=>norm(x['dim_'+k]||'NO')===norm(dims[k]||'NO')) &&
+    norm(x.thoidiem_ck||'')===norm(thoidiem||'')
+  );
+  if(found) return found;
+  const row = { id: uid(), ma: makeUniqueMaDoanhThu_(), ten: tenGoiY||'', thoidiem_ck: thoidiem||'' };
+  DIM_KEYS.forEach(k=> row['dim_'+k] = dims[k]||'NO');
+  DB.doanhthu.push(row);
+  return row;
+}
+let _migratingDoanhThu = false;
+async function migrateProgramsToDoanhThu_(){
+  if(_migratingDoanhThu) return;
+  const needMigrate = (DB.programs||[]).some(p=>!p.ma_doanhthu) || (DB.programsLuyKe||[]).some(lk=>!lk.ma_doanhthu_tinhck && lk.ma_ck_chinh);
+  if(!needMigrate) return;
+  _migratingDoanhThu = true;
+  try{
+    let changedDoanhThu = false, changedPrograms = false, changedLuyKe = false;
+    (DB.programs||[]).forEach(p=>{
+      if(p.ma_doanhthu) return;
+      const dims = {thuonghieu:p.dim_thuonghieu,nhomkh:p.dim_nhomkh,loaisp:p.dim_loaisp,dactinh:p.dim_dactinh,congdung:p.dim_congdung,quycach:p.dim_quycach};
+      const dt = findOrCreateDoanhThu_(dims, p.thoidiem_ck, 'Tự tạo từ mã chiết khấu ' + (p.ma_chietkhau||''));
+      p.ma_doanhthu = dt.id;
+      p.ma_doanhthu_tinhck = dt.id;
+      changedDoanhThu = true; changedPrograms = true;
+    });
+    (DB.programsLuyKe||[]).forEach(lk=>{
+      if(lk.ma_doanhthu_tinhck || !lk.ma_ck_chinh) return;
+      const bp = DB.programs.find(p=>p.id===lk.ma_ck_chinh);
+      if(bp && bp.ma_doanhthu){ lk.ma_doanhthu_tinhck = bp.ma_doanhthu; changedLuyKe = true; }
+    });
+    if(changedDoanhThu) await saveDoanhThu();
+    if(changedPrograms) await savePrograms();
+    if(changedLuyKe) await saveLuyKe();
+    if(changedDoanhThu || changedPrograms || changedLuyKe){
+      toast('Đã tự động tạo Danh mục Mã doanh thu cho các Mã chiết khấu cũ','ok');
+      if(UI.tab==='doanhthu') renderDoanhThu();
+      if(UI.tab==='programs') renderProgramsHub();
+    }
+  } finally {
+    _migratingDoanhThu = false;
+  }
+}
+
+function renderDoanhThu(){
+  document.getElementById('topbarActions').innerHTML = `<button class="btn btn-primary" onclick="openDoanhThuForm()">${ICON.plus} Thêm mã doanh thu</button>`;
+  const rowsHtml = DB.doanhthu.map((d,i)=>{
+    const soCK = DB.programs.filter(p=>p.ma_doanhthu===d.id).length;
+    return `<tr>
+      <td class="mono">${esc(d.ma)}</td>
+      <td>${esc(d.ten||'')}</td>
+      <td>${dimsLabel({thuonghieu:d.dim_thuonghieu,nhomkh:d.dim_nhomkh,loaisp:d.dim_loaisp,dactinh:d.dim_dactinh,congdung:d.dim_congdung,quycach:d.dim_quycach})}</td>
+      <td>${esc(d.thoidiem_ck||'')}</td>
+      <td class="num mono">${soCK}</td>
+      <td style="width:70px"><div class="rowline">
+        <span class="small-x" onclick="openDoanhThuForm(${i})">${ICON.edit}</span>
+        <span class="small-x" onclick="deleteDoanhThuRow(${i})">${ICON.trash}</span>
+      </div></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('content').innerHTML = `
+    <div class="section-note">Mỗi "Mã doanh thu" là 1 tổ hợp Thương hiệu/Nhóm hàng/Loại SP/Đặc tính/Công dụng/Quy cách + Thời điểm chiết khấu — khai báo 1 lần, dùng lại cho nhiều Mã chiết khấu khác nhau (cả làm điều kiện lẫn làm "Doanh thu tính chiết khấu").</div>
+    <div class="card">
+      <div class="card-head"><div><h2>Danh sách Mã doanh thu</h2><div class="hint">${DB.doanhthu.length} mã đã khai báo</div></div>
+        <button class="btn" id="btnImportDoanhThu">${ICON.upload} Tải file Excel (.xlsx)</button>
+        <button class="btn" id="btnExportDoanhThu">${ICON.download} Xuất Excel</button>
+      </div>
+      ${DB.doanhthu.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Mã doanh thu</th><th>Tên gợi nhớ</th><th>Tổ hợp thuộc tính</th><th>Thời điểm CK</th><th class="num">Số mã CK dùng</th><th></th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table></div>` : `<div class="empty"><div class="big">🗂️</div>Chưa có Mã doanh thu nào. Bấm <b>Thêm mã doanh thu</b> để bắt đầu.</div>`}
+    </div>
+  `;
+  document.getElementById('btnImportDoanhThu').onclick = () => triggerFileImport(handleDoanhThuFile);
+  document.getElementById('btnExportDoanhThu').onclick = exportDoanhThuXlsx;
+}
+window.renderDoanhThu = renderDoanhThu;
+function openDoanhThuForm(idx){
+  const row = idx!=null ? DB.doanhthu[idx] : {
+    ma:'', ten:'', dim_thuonghieu:'NO',dim_nhomkh:'NO',dim_loaisp:'NO',dim_dactinh:'NO',dim_congdung:'NO',dim_quycach:'NO',
+    thoidiem_ck:'Quý'
+  };
+  openModal(`
+    <h3>${idx!=null?'Sửa':'Thêm'} Mã doanh thu</h3>
+    <div class="grid grid-2">
+      <div class="field"><label>Mã doanh thu</label><input type="text" id="dt_ma" value="${esc(row.ma)}" placeholder="VD: DT001"></div>
+      <div class="field"><label>Tên gợi nhớ</label><input type="text" id="dt_ten" value="${esc(row.ten||'')}" placeholder="VD: Lốp TBR miền Bắc"></div>
+    </div>
+    ${dimSelectors('dt', row)}
+    <div class="field"><label>Thời điểm chiết khấu</label>
+      <select id="dt_thoidiem_ck">${THOIDIEM_OPTIONS.map(o=>`<option ${row.thoidiem_ck===o?'selected':''}>${o}</option>`).join('')}</select>
+    </div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:8px">
+      <button class="btn" onclick="closeModal()">Hủy</button>
+      <button class="btn btn-primary" onclick="saveDoanhThuForm(${idx!=null?idx:'null'})">Lưu lên đám mây</button>
+    </div>
+  `);
+}
+window.openDoanhThuForm = openDoanhThuForm;
+async function saveDoanhThuForm(idx){
+  const ma = document.getElementById('dt_ma').value.trim();
+  if(!ma){ toast('Vui lòng nhập Mã doanh thu','err'); return; }
+  if(DB.doanhthu.some((x,i)=>norm(x.ma)===norm(ma) && i!==idx)){ toast('Mã doanh thu đã tồn tại','err'); return; }
+  const dims = {};
+  SINGLE_DIM_KEYS.forEach(k => dims['dim_' + k] = document.getElementById('dt_' + k).value);
+  MULTI_DIM_KEYS.forEach(k => dims['dim_' + k] = readMultiDimValue('dt', k));
+  const row = {
+    id: idx!=null ? DB.doanhthu[idx].id : uid(),
+    ma, ten: document.getElementById('dt_ten').value.trim(),
+    ...dims,
+    thoidiem_ck: document.getElementById('dt_thoidiem_ck').value
+  };
+  if(idx!=null) DB.doanhthu[idx] = row; else DB.doanhthu.push(row);
+  await saveDoanhThu();
+  closeModal(); toast('Đã lưu Mã doanh thu','ok'); renderDoanhThu();
+}
+window.saveDoanhThuForm = saveDoanhThuForm;
+window.deleteDoanhThuRow = async (idx)=>{
+  const dt = DB.doanhthu[idx];
+  const soCK = DB.programs.filter(p=>p.ma_doanhthu===dt.id || p.ma_doanhthu_tinhck===dt.id).length;
+  if(soCK){ toast(`Không thể xóa — đang có ${soCK} Mã chiết khấu sử dụng Mã doanh thu này.`,'err'); return; }
+  if(!confirm('Xóa Mã doanh thu này?')) return;
+  DB.doanhthu.splice(idx,1);
+  await saveDoanhThu(); toast('Đã xóa','ok'); renderDoanhThu();
+};
+function exportDoanhThuXlsx(){
+  const rows = DB.doanhthu.map(d=>({
+    'Mã doanh thu': d.ma, 'Tên gợi nhớ': d.ten||'',
+    DM_THUONGHIEU: d.dim_thuonghieu, DM_NHOMKH: d.dim_nhomkh, DM_LOAISP: d.dim_loaisp,
+    DM_DACTINH: d.dim_dactinh, DM_CONGDUNG: d.dim_congdung, DM_QUYCACH: d.dim_quycach,
+    THOIDIEM_CK: d.thoidiem_ck||''
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'DM_DOANHTHU');
+  downloadWb(wb, 'DM_DOANHTHU_export.xlsx');
+  toast('Đã xuất file Danh mục doanh thu','ok');
+}
+async function handleDoanhThuFile(file){
+  try{
+    const wb = await readWorkbook(file);
+    const ws = findSheet(wb, ['DM_DOANHTHU','DOANHTHU']) || wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, {defval:''});
+    let c=0;
+    data.forEach(row=>{
+      const ma = String(getVal(row,['Mã doanh thu','MA_DOANHTHU']) || '').trim();
+      if(!ma) return;
+      const dims = {};
+      DIM_KEYS.forEach(k=>{ dims['dim_'+k] = String(getVal(row,[('DM_'+k).toUpperCase()])||'NO').trim() || 'NO'; });
+      const rowObj = { ma, ten: String(getVal(row,['Tên gợi nhớ','TEN'])||''), ...dims, thoidiem_ck: String(getVal(row,['THOIDIEM_CK','Thời điểm chiết khấu'])||'') };
+      const existing = DB.doanhthu.find(x=>norm(x.ma)===norm(ma));
+      if(existing) Object.assign(existing, rowObj); else DB.doanhthu.push({ id: uid(), ...rowObj });
+      c++;
+    });
+    await saveDoanhThu();
+    toast(`Đã nạp ${c} Mã doanh thu`,'ok');
+    renderDoanhThu();
+  }catch(err){ toast('Lỗi xử lý tệp Danh mục doanh thu: ' + err.message, 'err'); }
+}
+window.handleDoanhThuFile = handleDoanhThuFile;
+
+/* ============================ DANH MỤC KẾ HOẠCH DOANH THU ============================ */
+function ymdStamp_(d){
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return '' + y + m + day;
+}
+function makeMaKeHoach_(ngayLapISO){
+  const d = ngayLapISO ? new Date(ngayLapISO) : new Date();
+  const prefix = ymdStamp_(d) + '.';
+  let maxSeq = 0;
+  (DB.kehoach||[]).forEach(r=>{
+    if(String(r.ma_kehoach||'').indexOf(prefix)===0){
+      const seq = parseInt(String(r.ma_kehoach).slice(prefix.length),10);
+      if(!isNaN(seq) && seq>maxSeq) maxSeq = seq;
+    }
+  });
+  return prefix + String(maxSeq+1).padStart(3,'0');
+}
+// Tìm kế hoạch khớp Mã doanh thu (ưu tiên khớp đích danh trước "ALL") + khớp ngày rơi vào khoảng kỳ.
+// MỚI: tra theo 2 tầng — trước tiên tìm trong "Chi tiết kế hoạch" (bảng con, theo từng kỳ Tháng/Quý/
+// 6 Tháng/Năm/kỳ tùy chỉnh) của các kế hoạch (cha) áp dụng cho đúng Mã doanh thu; nếu kế hoạch cha có
+// chi tiết nhưng KHÔNG có kỳ nào khớp đúng ngày, KHÔNG rơi về số tổng của cha (vì cha lúc này chỉ là
+// khung bao ngoài để sinh kỳ, số liệu thật nằm ở từng kỳ con) — chỉ rơi về số của cha khi cha CHƯA hề
+// có chi tiết nào (kế hoạch đơn giản, dùng ngay số tổng của cha, y hệt hành vi ban đầu).
+function keHoachAppliesToDoanhThu_(r, maDoanhThuId){
+  const raw = String(r.ma_doanhthu||'').trim();
+  if(!raw || norm(raw)==='ALL') return true;
+  const list = raw.split(',').map(x=>x.trim()).filter(Boolean);
+  return list.includes(maDoanhThuId);
+}
+function lookupKeHoach_(maDoanhThuId, ngayISO){
+  if(!ngayISO) return null;
+  const parents = (DB.kehoach||[]).filter(r=>
+    periodOverlap(ngayISO, ngayISO, r.hieuluctu, r.hieulucden) && keHoachAppliesToDoanhThu_(r, maDoanhThuId)
+  );
+  if(!parents.length) return null;
+  // Ưu tiên kế hoạch áp dụng ĐÍCH DANH mã doanh thu (không phải "ALL" hoặc danh sách nhiều mã) trước
+  parents.sort((a,b)=>{
+    const aAll = norm(a.ma_doanhthu)==='ALL' || !a.ma_doanhthu ? 1 : 0;
+    const bAll = norm(b.ma_doanhthu)==='ALL' || !b.ma_doanhthu ? 1 : 0;
+    return aAll - bAll;
+  });
+  for(const p of parents){
+    const children = (DB.kehoachChiTiet||[]).filter(c=>c.kehoach_id===p.id && periodOverlap(ngayISO, ngayISO, c.tu_ngay, c.den_ngay));
+    if(children.length){
+      // Nếu nhiều kỳ cùng khớp (VD Tháng + Quý + 6 Tháng đều chứa ngày này), ưu tiên kỳ NGẮN NHẤT
+      // (chi tiết nhất — Tháng trước Quý, Quý trước 6 Tháng...) để phản ánh đúng kế hoạch sát nhất.
+      children.sort((a,b)=> (new Date(a.den_ngay)-new Date(a.tu_ngay)) - (new Date(b.den_ngay)-new Date(b.tu_ngay)));
+      return { dt_kehoach: children[0].dt_kehoach, sl_kehoach: children[0].sl_kehoach, ky: children[0].ky, parent: p };
+    }
+    const hasAnyChild = (DB.kehoachChiTiet||[]).some(c=>c.kehoach_id===p.id);
+    if(!hasAnyChild && (p.dt_kehoach || p.sl_kehoach)){
+      return { dt_kehoach: p.dt_kehoach, sl_kehoach: p.sl_kehoach, ky: null, parent: p };
+    }
+  }
+  return null;
+}
+
+/* ---- Chọn nhiều Mã doanh thu áp dụng (thay vì chỉ ALL hoặc 1 mã) ---- */
+function keHoachDoanhThuCheckboxBox_(selectedCsv){
+  const raw = String(selectedCsv==null?'ALL':selectedCsv).trim();
+  const isAll = raw==='' || norm(raw)==='ALL';
+  const selected = isAll ? [] : raw.split(',').map(x=>x.trim()).filter(Boolean);
+  return `
+    <div class="field">
+      <label>Mã doanh thu áp dụng <span class="hint">(chọn "Tất cả", hoặc tick nhiều mã cụ thể)</span></label>
+      <div style="border:1px solid var(--slate-200);border-radius:7px;padding:8px;max-height:170px;overflow-y:auto;background:#fff">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:4px;cursor:pointer;font-size:12.5px">
+          <input type="checkbox" id="kh_dt_all" ${isAll?'checked':''} onchange="onKeHoachDoanhThuAllToggle(this)"> Tất cả Mã doanh thu (ALL)
+        </label>
+        <div style="border-top:1px solid var(--slate-100);margin:4px 0 6px"></div>
+        ${DB.doanhthu.length ? DB.doanhthu.map(d=>`
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:2px 0;cursor:pointer">
+            <input type="checkbox" class="kh_dt_opt" value="${esc(d.id)}" ${(!isAll && selected.includes(d.id))?'checked':''} ${isAll?'disabled':''} onchange="onKeHoachDoanhThuOptToggle()">
+            <span class="mono">${esc(d.ma)}</span>${d.ten?' — '+esc(d.ten):''}
+          </label>`).join('') : `<div class="hint">Chưa có Mã doanh thu nào — vào "Danh mục doanh thu sản lượng" để khai báo trước.</div>`}
+      </div>
+    </div>`;
+}
+function onKeHoachDoanhThuAllToggle(el){
+  document.querySelectorAll('.kh_dt_opt').forEach(o=>{ o.disabled = el.checked; if(el.checked) o.checked = false; });
+}
+window.onKeHoachDoanhThuAllToggle = onKeHoachDoanhThuAllToggle;
+function onKeHoachDoanhThuOptToggle(){
+  const any = document.querySelectorAll('.kh_dt_opt:checked').length > 0;
+  if(any){ const all = document.getElementById('kh_dt_all'); if(all) all.checked = false; }
+}
+window.onKeHoachDoanhThuOptToggle = onKeHoachDoanhThuOptToggle;
+function readKeHoachDoanhThuValue(){
+  const all = document.getElementById('kh_dt_all');
+  if(all && all.checked) return 'ALL';
+  const checked = Array.from(document.querySelectorAll('.kh_dt_opt:checked')).map(o=>o.value);
+  return checked.length ? checked.join(',') : 'ALL';
+}
+function keHoachDoanhThuDisplay_(csv){
+  const raw = String(csv||'').trim();
+  if(!raw || norm(raw)==='ALL') return '<span class="tag tag-gold">ALL — tất cả</span>';
+  return raw.split(',').map(id=>{
+    const d = DB.doanhthu.find(x=>x.id===id.trim());
+    return `<span class="tag mono" style="margin-right:3px">${esc(d?d.ma:id)}</span>`;
+  }).join('');
+}
+
+function renderKeHoach(){
+  document.getElementById('topbarActions').innerHTML = `<button class="btn btn-primary" onclick="openKeHoachForm()">${ICON.plus} Thêm kế hoạch</button>`;
+  const rowsHtml = DB.kehoach.map((k,i)=>{
+    const soKy = DB.kehoachChiTiet.filter(c=>c.kehoach_id===k.id).length;
+    return `<tr>
+      <td class="mono">${esc(k.ma_kehoach)}</td>
+      <td>${fmtDate(k.ngaylap)}</td>
+      <td>${fmtDate(k.hieuluctu)} → ${fmtDate(k.hieulucden)}</td>
+      <td>${keHoachDoanhThuDisplay_(k.ma_doanhthu)}</td>
+      <td class="num mono">${soKy ? `<span class="hint">xem chi tiết</span>` : fmtVND(k.dt_kehoach)}</td>
+      <td class="num mono">${soKy ? `<span class="hint">xem chi tiết</span>` : fmtNum(k.sl_kehoach)}</td>
+      <td style="width:110px"><div class="rowline">
+        <span class="small-x" onclick="openKeHoachChiTietManager('${k.id}')" title="Chi tiết kế hoạch theo kỳ (Tháng/Quý/6 Tháng/Năm)">${ICON.layers||'📶'}${soKy?` ${soKy}`:''}</span>
+        <span class="small-x" onclick="openKeHoachForm(${i})">${ICON.edit}</span>
+        <span class="small-x" onclick="deleteKeHoachRow(${i})">${ICON.trash}</span>
+      </div></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('content').innerHTML = `
+    <div class="section-note">Khai báo kế hoạch Doanh thu/Sản lượng, phạm vi hiệu lực tổng thể (dùng để sinh kỳ con), và Mã doanh thu áp dụng ("Tất cả" hoặc chọn nhiều mã cụ thể). Bấm biểu tượng <b>${ICON.layers||'📶'}</b> ở mỗi dòng để xem/khai báo <b>Chi tiết kế hoạch</b> theo từng kỳ (Tháng/Quý/6 Tháng/Năm — tự sinh theo hiệu lực, hoặc thêm kỳ tùy chỉnh).</div>
+    <div class="card">
+      <div class="card-head"><div><h2>Danh sách kế hoạch doanh thu</h2><div class="hint">${DB.kehoach.length} kế hoạch đã khai báo</div></div>
+        <button class="btn" id="btnImportKeHoach">${ICON.upload} Tải file Excel (.xlsx)</button>
+        <button class="btn" id="btnExportKeHoach">${ICON.download} Xuất Excel</button>
+      </div>
+      ${DB.kehoach.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Mã kế hoạch</th><th>Ngày lập</th><th>Hiệu lực</th><th>Mã doanh thu áp dụng</th><th class="num">Doanh thu KH</th><th class="num">Sản lượng KH</th><th></th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table></div>` : `<div class="empty"><div class="big">🎯</div>Chưa có kế hoạch nào. Bấm <b>Thêm kế hoạch</b> để bắt đầu.</div>`}
+    </div>
+  `;
+  document.getElementById('btnImportKeHoach').onclick = () => triggerFileImport(handleKeHoachFile);
+  document.getElementById('btnExportKeHoach').onclick = exportKeHoachXlsx;
+}
+window.renderKeHoach = renderKeHoach;
+function openKeHoachForm(idx){
+  const row = idx!=null ? DB.kehoach[idx] : { ma_kehoach:'', ngaylap: todayISO(), hieuluctu:'', hieulucden:'', dt_kehoach:'', sl_kehoach:'', ma_doanhthu:'ALL' };
+  openModal(`
+    <h3>${idx!=null?'Sửa':'Thêm'} kế hoạch doanh thu</h3>
+    <div class="field"><label>Mã kế hoạch</label><input type="text" id="kh_ma" value="${esc(row.ma_kehoach)}" ${idx!=null?'disabled':''} placeholder="Tự sinh khi lưu nếu để trống (yyyymmdd.001)"></div>
+    <div class="grid grid-2">
+      <div class="field"><label>Ngày lập kế hoạch</label><input type="date" id="kh_ngaylap" value="${esc(row.ngaylap)}"></div>
+      <div></div>
+    </div>
+    ${keHoachDoanhThuCheckboxBox_(row.ma_doanhthu)}
+    <div class="grid grid-2">
+      <div class="field"><label>Hiệu lực từ ngày <span class="hint">(khung tổng thể — dùng để tự sinh kỳ con Tháng/Quý/6 Tháng/Năm)</span></label><input type="date" id="kh_hieuluctu" value="${esc(row.hieuluctu)}"></div>
+      <div class="field"><label>Hiệu lực đến ngày</label><input type="date" id="kh_hieulucden" value="${esc(row.hieulucden)}"></div>
+    </div>
+    <div class="section-note">Doanh thu/Sản lượng kế hoạch bên dưới là số <b>TỔNG dự phòng</b> — chỉ dùng khi kế hoạch này CHƯA khai báo Chi tiết theo từng kỳ. Nếu đã có Chi tiết kế hoạch (Tháng/Quý/6 Tháng/Năm) ở bảng con, hệ thống sẽ luôn ưu tiên dùng đúng số của từng kỳ con thay vì số tổng này.</div>
+    <div class="grid grid-2">
+      <div class="field"><label>Doanh thu kế hoạch tổng (đ)</label><input type="text" inputmode="numeric" id="kh_dt_kehoach" value="${fmtIntInputVal(row.dt_kehoach)}" oninput="liveFormatIntInput(this)"></div>
+      <div class="field"><label>Sản lượng kế hoạch tổng</label><input type="text" inputmode="numeric" id="kh_sl_kehoach" value="${fmtIntInputVal(row.sl_kehoach)}" oninput="liveFormatIntInput(this)"></div>
+    </div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:8px">
+      <button class="btn" onclick="closeModal()">Hủy</button>
+      <button class="btn btn-primary" onclick="saveKeHoachForm(${idx!=null?idx:'null'})">Lưu lên đám mây</button>
+    </div>
+  `);
+}
+window.openKeHoachForm = openKeHoachForm;
+async function saveKeHoachForm(idx){
+  const ngaylap = document.getElementById('kh_ngaylap').value;
+  const hieuluctu = document.getElementById('kh_hieuluctu').value;
+  const hieulucden = document.getElementById('kh_hieulucden').value;
+  if(!ngaylap || !hieuluctu || !hieulucden){ toast('Vui lòng nhập đủ Ngày lập, Hiệu lực từ/đến ngày','err'); return; }
+  let ma_kehoach = document.getElementById('kh_ma').value.trim();
+  if(!ma_kehoach) ma_kehoach = makeMaKeHoach_(ngaylap);
+  const row = {
+    id: idx!=null ? DB.kehoach[idx].id : uid(),
+    ma_kehoach, ngaylap, hieuluctu, hieulucden,
+    dt_kehoach: rawIntVal('kh_dt_kehoach'), sl_kehoach: rawIntVal('kh_sl_kehoach'),
+    ma_doanhthu: readKeHoachDoanhThuValue()
+  };
+  if(idx!=null) DB.kehoach[idx] = row; else DB.kehoach.push(row);
+  await saveKeHoach();
+  closeModal(); toast('Đã lưu kế hoạch doanh thu','ok'); renderKeHoach();
+}
+window.saveKeHoachForm = saveKeHoachForm;
+window.deleteKeHoachRow = async (idx)=>{
+  const kh = DB.kehoach[idx];
+  const soKy = DB.kehoachChiTiet.filter(c=>c.kehoach_id===kh.id).length;
+  if(!confirm(soKy ? `Kế hoạch này đang có ${soKy} kỳ chi tiết — xóa sẽ xóa luôn toàn bộ chi tiết đó. Vẫn xóa?` : 'Xóa kế hoạch này?')) return;
+  DB.kehoach.splice(idx,1);
+  DB.kehoachChiTiet = DB.kehoachChiTiet.filter(c=>c.kehoach_id!==kh.id);
+  await saveKeHoach(); await saveKeHoachChiTiet();
+  toast('Đã xóa','ok'); renderKeHoach();
+};
+function exportKeHoachXlsx(){
+  const rows = DB.kehoach.map(k=>({
+    'Mã kế hoạch': k.ma_kehoach, 'Ngày lập kế hoạch': k.ngaylap,
+    'Hiệu lực từ ngày': k.hieuluctu, 'Hiệu lực đến ngày': k.hieulucden,
+    'Doanh thu kế hoạch': k.dt_kehoach, 'Sản lượng kế hoạch': k.sl_kehoach,
+    'Mã doanh thu': norm(k.ma_doanhthu)==='ALL' ? 'ALL' : String(k.ma_doanhthu||'').split(',').map(id=>(DB.doanhthu.find(d=>d.id===id.trim())||{}).ma||id).join(',')
+  }));
+  const chiTietRows = DB.kehoachChiTiet.map(c=>{
+    const kh = DB.kehoach.find(k=>k.id===c.kehoach_id);
+    return {
+      'Mã kế hoạch': kh?kh.ma_kehoach:c.kehoach_id, 'Kỳ': c.ky,
+      'Từ ngày': c.tu_ngay, 'Đến ngày': c.den_ngay,
+      'Doanh thu kế hoạch': c.dt_kehoach, 'Sản lượng kế hoạch': c.sl_kehoach
+    };
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'DM_KEHOACH');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(chiTietRows), 'DM_KEHOACH_CHITIET');
+  downloadWb(wb, 'DM_KEHOACH_export.xlsx');
+  toast('Đã xuất file Danh mục kế hoạch (kèm chi tiết theo kỳ)','ok');
+}
+async function handleKeHoachFile(file){
+  try{
+    const wb = await readWorkbook(file);
+    const ws = findSheet(wb, ['DM_KEHOACH','KEHOACH']) || wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, {defval:''});
+    let c=0;
+    data.forEach(row=>{
+      const hieuluctu = excelDateToISO(getVal(row,['Hiệu lực từ ngày','HIEULUCTU']));
+      const hieulucden = excelDateToISO(getVal(row,['Hiệu lực đến ngày','HIEULUCDEN']));
+      if(!hieuluctu || !hieulucden) return;
+      const maDtRaw = String(getVal(row,['Mã doanh thu','MA_DOANHTHU'])||'ALL').trim();
+      let ma_doanhthu = 'ALL';
+      if(norm(maDtRaw)!=='ALL' && maDtRaw!==''){
+        const codes = maDtRaw.split(',').map(x=>x.trim()).filter(Boolean);
+        const ids = codes.map(code=>(DB.doanhthu.find(d=>norm(d.ma)===norm(code))||{}).id).filter(Boolean);
+        ma_doanhthu = ids.length ? ids.join(',') : 'ALL';
+      }
+      let ma_kehoach = String(getVal(row,['Mã kế hoạch','MA_KEHOACH'])||'').trim();
+      const ngaylap = excelDateToISO(getVal(row,['Ngày lập kế hoạch','NGAYLAP'])) || todayISO();
+      if(!ma_kehoach) ma_kehoach = makeMaKeHoach_(ngaylap);
+      const rowObj = {
+        ma_kehoach, ngaylap, hieuluctu, hieulucden,
+        dt_kehoach: cleanExcelNumber(getVal(row,['Doanh thu kế hoạch','DT_KEHOACH'])),
+        sl_kehoach: cleanExcelNumber(getVal(row,['Sản lượng kế hoạch','SL_KEHOACH'])),
+        ma_doanhthu
+      };
+      const existing = DB.kehoach.find(x=>norm(x.ma_kehoach)===norm(ma_kehoach));
+      if(existing) Object.assign(existing, rowObj); else DB.kehoach.push({ id: uid(), ...rowObj });
+      c++;
+    });
+    // Nạp kèm sheet Chi tiết kế hoạch theo kỳ, nếu file có (tra ngược Mã kế hoạch -> id)
+    const wsCt = findSheet(wb, ['DM_KEHOACH_CHITIET','KEHOACH_CHITIET']);
+    let cCt = 0;
+    if(wsCt){
+      const dataCt = XLSX.utils.sheet_to_json(wsCt, {defval:''});
+      dataCt.forEach(row=>{
+        const maKeHoach = String(getVal(row,['Mã kế hoạch','MA_KEHOACH'])||'').trim();
+        const kh = DB.kehoach.find(x=>norm(x.ma_kehoach)===norm(maKeHoach));
+        const tu = excelDateToISO(getVal(row,['Từ ngày','TU_NGAY']));
+        const den = excelDateToISO(getVal(row,['Đến ngày','DEN_NGAY']));
+        if(!kh || !tu || !den) return;
+        const ky = String(getVal(row,['Kỳ','KY'])||'').trim() || (tu+'~'+den);
+        const rowObj = {
+          kehoach_id: kh.id, ky, tu_ngay: tu, den_ngay: den,
+          dt_kehoach: cleanExcelNumber(getVal(row,['Doanh thu kế hoạch','DT_KEHOACH'])),
+          sl_kehoach: cleanExcelNumber(getVal(row,['Sản lượng kế hoạch','SL_KEHOACH']))
+        };
+        const existing = DB.kehoachChiTiet.find(x=>x.kehoach_id===kh.id && norm(x.ky)===norm(ky));
+        if(existing) Object.assign(existing, rowObj); else DB.kehoachChiTiet.push({ id: uid(), ...rowObj });
+        cCt++;
+      });
+    }
+    await saveKeHoach();
+    if(cCt) await saveKeHoachChiTiet();
+    toast(`Đã nạp ${c} kế hoạch doanh thu${cCt?` · ${cCt} dòng chi tiết theo kỳ`:''}`,'ok');
+    renderKeHoach();
+  }catch(err){ toast('Lỗi xử lý tệp Danh mục kế hoạch: ' + err.message, 'err'); }
+}
+window.handleKeHoachFile = handleKeHoachFile;
+
+/* ---- Chi tiết kế hoạch: bảng con theo từng kỳ (Tháng/Quý/6 Tháng/Năm — tự sinh, hoặc kỳ tùy chỉnh) ---- */
+// Sinh danh sách các kỳ chuẩn (Tháng/Quý/6 Tháng/Năm) nằm TRỌN trong khoảng [hieuluctu, hieulucden]
+function periodsWithinRange_(hieuluctu, hieulucden){
+  const result = [];
+  if(!hieuluctu || !hieulucden) return result;
+  const start = new Date(hieuluctu), end = new Date(hieulucden);
+  if(isNaN(start) || isNaN(end) || start>end) return result;
+  for(let y=start.getFullYear(); y<=end.getFullYear(); y++){
+    for(let m=1; m<=12; m++){
+      const ms = new Date(y,m-1,1), me = new Date(y,m,0);
+      if(ms>=start && me<=end) result.push({ ky:`T${m}_${y}`, tu_ngay: toISO(ms), den_ngay: toISO(me) });
+    }
+    for(let q=1; q<=4; q++){
+      const qs = new Date(y,(q-1)*3,1), qe = new Date(y,q*3,0);
+      if(qs>=start && qe<=end) result.push({ ky:`Q${q}_${y}`, tu_ngay: toISO(qs), den_ngay: toISO(qe) });
+    }
+    for(let h=1; h<=2; h++){
+      const hs = new Date(y,(h-1)*6,1), he = new Date(y,h*6,0);
+      if(hs>=start && he<=end) result.push({ ky:`6T${h}_${y}`, tu_ngay: toISO(hs), den_ngay: toISO(he) });
+    }
+    const ys = new Date(y,0,1), ye = new Date(y,11,31);
+    if(ys>=start && ye<=end) result.push({ ky:`Nam_${y}`, tu_ngay: toISO(ys), den_ngay: toISO(ye) });
+  }
+  return result;
+}
+function openKeHoachChiTietManager(kehoachId){
+  renderKeHoachChiTietManagerBody(kehoachId);
+}
+window.openKeHoachChiTietManager = openKeHoachChiTietManager;
+function renderKeHoachChiTietManagerBody(kehoachId){
+  const kh = DB.kehoach.find(x=>x.id===kehoachId);
+  if(!kh) return;
+  const children = DB.kehoachChiTiet.filter(c=>c.kehoach_id===kehoachId)
+    .sort((a,b)=> String(a.tu_ngay||'').localeCompare(String(b.tu_ngay||'')));
+  const rowsHtml = children.map((c)=>{
+    const realIdx = DB.kehoachChiTiet.indexOf(c);
+    return `<tr>
+      <td class="mono">${esc(c.ky)}</td>
+      <td>${fmtDate(c.tu_ngay)} → ${fmtDate(c.den_ngay)}</td>
+      <td class="num mono">${fmtVND(c.dt_kehoach)}</td>
+      <td class="num mono">${fmtNum(c.sl_kehoach)}</td>
+      <td style="width:70px"><div class="rowline">
+        <span class="small-x" onclick="openKeHoachChiTietForm('${kehoachId}',${realIdx})">${ICON.edit}</span>
+        <span class="small-x" onclick="deleteKeHoachChiTietRow(${realIdx},'${kehoachId}')">${ICON.trash}</span>
+      </div></td>
+    </tr>`;
+  }).join('');
+  openModal(`
+    <h3>Chi tiết kế hoạch — ${esc(kh.ma_kehoach)}</h3>
+    <div class="section-note">Khung tổng thể: ${fmtDate(kh.hieuluctu)} → ${fmtDate(kh.hieulucden)}. Bấm <b>"Tự động sinh kỳ"</b> để tạo sẵn các kỳ Tháng/Quý/6 Tháng/Năm nằm trọn trong khung này (kỳ đã có sẵn sẽ không bị tạo trùng), rồi nhập Doanh thu/Sản lượng kế hoạch cho từng kỳ. Có thể thêm kỳ tùy chỉnh (Từ ngày–Đến ngày bất kỳ) ngoài các kỳ tự sinh.</div>
+    <div id="khChiTietListWrap">
+      ${children.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Kỳ</th><th>Từ ngày → Đến ngày</th><th class="num">Doanh thu KH</th><th class="num">Sản lượng KH</th><th></th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table></div>` : `<div class="empty">Chưa có kỳ chi tiết nào — bấm "Tự động sinh kỳ" hoặc "Thêm kỳ tùy chỉnh" bên dưới.</div>`}
+    </div>
+    <div class="btn-row" style="margin-top:12px;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" onclick="autoGenKeHoachChiTiet('${kehoachId}')">${ICON.plus} Tự động sinh kỳ Tháng/Quý/6 Tháng/Năm</button>
+        <button class="btn btn-sm" onclick="openKeHoachChiTietForm('${kehoachId}')">${ICON.plus} Thêm kỳ tùy chỉnh</button>
+      </div>
+      <button class="btn" onclick="closeModal()">Đóng</button>
+    </div>
+  `);
+}
+async function autoGenKeHoachChiTiet(kehoachId){
+  const kh = DB.kehoach.find(x=>x.id===kehoachId);
+  if(!kh) return;
+  if(!kh.hieuluctu || !kh.hieulucden){ toast('Kế hoạch chưa có đủ Hiệu lực từ/đến ngày để tự sinh kỳ','err'); return; }
+  const periods = periodsWithinRange_(kh.hieuluctu, kh.hieulucden);
+  const existingKy = new Set(DB.kehoachChiTiet.filter(c=>c.kehoach_id===kehoachId).map(c=>norm(c.ky)));
+  let added = 0;
+  periods.forEach(p=>{
+    if(existingKy.has(norm(p.ky))) return;
+    DB.kehoachChiTiet.push({ id: uid(), kehoach_id: kehoachId, ky: p.ky, tu_ngay: p.tu_ngay, den_ngay: p.den_ngay, dt_kehoach:'', sl_kehoach:'' });
+    added++;
+  });
+  if(added){
+    await saveKeHoachChiTiet();
+    toast(`Đã tự động sinh ${added} kỳ mới`,'ok');
+  } else {
+    toast('Không có kỳ mới nào để sinh thêm (đã đủ hoặc khung hiệu lực chưa đủ 1 kỳ trọn vẹn)','err');
+  }
+  renderKeHoachChiTietManagerBody(kehoachId);
+  renderKeHoach();
+}
+window.autoGenKeHoachChiTiet = autoGenKeHoachChiTiet;
+function openKeHoachChiTietForm(kehoachId, idx){
+  const row = idx!=null ? DB.kehoachChiTiet[idx] : { ky:'', tu_ngay:'', den_ngay:'', dt_kehoach:'', sl_kehoach:'' };
+  openModal(`
+    <h3>${idx!=null?'Sửa':'Thêm'} kỳ chi tiết</h3>
+    <div class="field"><label>Tên kỳ</label><input type="text" id="kc_ky" value="${esc(row.ky)}" placeholder="VD: T1_2026, Q1_2026, 6T1_2026, hoặc tên tự đặt"></div>
+    <div class="grid grid-2">
+      <div class="field"><label>Từ ngày</label><input type="date" id="kc_tu" value="${esc(row.tu_ngay)}"></div>
+      <div class="field"><label>Đến ngày</label><input type="date" id="kc_den" value="${esc(row.den_ngay)}"></div>
+    </div>
+    <div class="grid grid-2">
+      <div class="field"><label>Doanh thu kế hoạch (đ)</label><input type="text" inputmode="numeric" id="kc_dt" value="${fmtIntInputVal(row.dt_kehoach)}" oninput="liveFormatIntInput(this)"></div>
+      <div class="field"><label>Sản lượng kế hoạch</label><input type="text" inputmode="numeric" id="kc_sl" value="${fmtIntInputVal(row.sl_kehoach)}" oninput="liveFormatIntInput(this)"></div>
+    </div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:8px">
+      <button class="btn" onclick="openKeHoachChiTietManager('${kehoachId}')">Hủy</button>
+      <button class="btn btn-primary" onclick="saveKeHoachChiTietForm('${kehoachId}',${idx!=null?idx:'null'})">Lưu kỳ chi tiết</button>
+    </div>
+  `);
+}
+window.openKeHoachChiTietForm = openKeHoachChiTietForm;
+async function saveKeHoachChiTietForm(kehoachId, idx){
+  const ky = document.getElementById('kc_ky').value.trim();
+  const tu_ngay = document.getElementById('kc_tu').value;
+  const den_ngay = document.getElementById('kc_den').value;
+  if(!ky || !tu_ngay || !den_ngay){ toast('Vui lòng nhập đủ Tên kỳ, Từ ngày, Đến ngày','err'); return; }
+  if((DB.kehoachChiTiet||[]).some((x,i)=>x.kehoach_id===kehoachId && norm(x.ky)===norm(ky) && i!==idx)){
+    toast('Kỳ này đã tồn tại trong kế hoạch — đổi tên kỳ khác hoặc sửa kỳ đã có','err'); return;
+  }
+  const row = {
+    id: idx!=null ? DB.kehoachChiTiet[idx].id : uid(),
+    kehoach_id: kehoachId, ky, tu_ngay, den_ngay,
+    dt_kehoach: rawIntVal('kc_dt'), sl_kehoach: rawIntVal('kc_sl')
+  };
+  if(idx!=null) DB.kehoachChiTiet[idx] = row; else DB.kehoachChiTiet.push(row);
+  await saveKeHoachChiTiet();
+  toast('Đã lưu kỳ chi tiết','ok');
+  openKeHoachChiTietManager(kehoachId);
+  renderKeHoach();
+}
+window.saveKeHoachChiTietForm = saveKeHoachChiTietForm;
+window.deleteKeHoachChiTietRow = async (idx, kehoachId)=>{
+  if(!confirm('Xóa kỳ chi tiết này?')) return;
+  DB.kehoachChiTiet.splice(idx,1);
+  await saveKeHoachChiTiet();
+  toast('Đã xóa','ok');
+  openKeHoachChiTietManager(kehoachId);
+  renderKeHoach();
+};
+
 function renderPrograms(){
   document.getElementById('topbarActions').innerHTML = `
     <button class="btn" id="btnImportProg">${ICON.upload} Tải file Mã chiết khấu (.xlsx)</button>
@@ -2003,6 +3092,10 @@ function renderPrograms(){
       <td class="mono">${esc(p.ma_chietkhau)}${ct?`<div class="hint" style="font-size:10px">📋 ${esc(ct.ma_chuongtrinh)}</div>`:''}</td>
       <td>${fmtDate(p.hieuluctu)} → ${fmtDate(p.hieulucden)}</td>
       <td>${active?'<span class="tag tag-ok">Hiệu lực</span>':'<span class="tag">Hết/Chưa hiệu lực</span>'}</td>
+      <td class="mono" style="font-size:11.5px">
+        ${p.ma_doanhthu ? `<span class="tag tag-gold">${esc((DB.doanhthu.find(d=>d.id===p.ma_doanhthu)||{}).ma||'?')}</span>` : '<span class="tag tag-no">Chưa gán</span>'}
+        ${(p.ma_doanhthu_tinhck && p.ma_doanhthu_tinhck!==p.ma_doanhthu) ? `<div class="hint" style="margin-top:2px">CK trên: ${esc((DB.doanhthu.find(d=>d.id===p.ma_doanhthu_tinhck)||{}).ma||'?')}</div>` : ''}
+      </td>
       <td>
         ${bacList.length ? `<span class="tag tag-gold">${bacList.length} bậc điều kiện</span>` : `
         <div>SL: ${fmtNum(p.sl_min)} – ${p.sl_max?fmtNum(p.sl_max):'∞'}</div>
@@ -2023,23 +3116,70 @@ function renderPrograms(){
   }).join('');
 
   document.getElementById('content').innerHTML = `
+    ${programsSubTabsHtml_()}
     <div class="section-note">Mẫu dữ liệu bao gồm hiệu lực thời gian, bậc thang Min-Max sản lượng hoặc doanh thu, hình thức chiết khấu (% theo giá mua / % theo giá công bố / số tiền cố định) và hình thức thanh toán chiết khấu (giảm hóa đơn / giảm giá bán). Hệ thống tự động đồng bộ lên Google Sheet.</div>
     <div class="card">
       <div class="card-head"><div><h2>Danh sách chương trình chiết khấu</h2><div class="hint">${DB.programs.length} chương trình / bậc chiết khấu đám mây</div></div></div>
       ${DB.programs.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Mã chiết khấu</th><th>Hiệu lực</th><th>Trạng thái</th><th>Bậc SL/DT</th><th>Hình thức CK</th><th class="num">Tỷ lệ CK</th><th class="num">Giá công bố / CK cố định</th><th>Thanh toán CK</th><th>Thời điểm CK</th><th></th></tr></thead>
+        <thead><tr><th>Mã chiết khấu</th><th>Hiệu lực</th><th>Trạng thái</th><th>Mã doanh thu</th><th>Bậc SL/DT</th><th>Hình thức CK</th><th class="num">Tỷ lệ CK</th><th class="num">Giá công bố / CK cố định</th><th>Thanh toán CK</th><th>Thời điểm CK</th><th></th></tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table></div>` : `<div class="empty"><div class="big">📋</div>Chưa có chương trình chiết khấu nào.<br>Bấm <b>Thêm chương trình</b> hoặc tải file Excel lên hệ thống.</div>`}
     </div>
   `;
+  bindProgramsSubTabs_();
 }
+// THEO YÊU CẦU: gộp "Mã chiết khấu" và "Chiết khấu lũy kế" chung 1 mục menu, chia 2 tab con (giống
+// pattern tab2 đang dùng ở Danh mục) — thay vì 2 mục menu riêng như trước.
+function programsSubTabsHtml_(){
+  if(!UI.programsSub) UI.programsSub = 'ma_ck';
+  return `<div class="tabs2" style="margin-bottom:14px">
+    <div class="tab2 ${UI.programsSub==='ma_ck'?'active':''}" data-progsub="ma_ck">Mã chiết khấu <span class="badge-count" style="background:var(--slate-100);color:var(--slate-500)">${DB.programs.length}</span></div>
+    <div class="tab2 ${UI.programsSub==='luyke'?'active':''}" data-progsub="luyke">Chiết khấu lũy kế <span class="badge-count" style="background:var(--slate-100);color:var(--slate-500)">${DB.programsLuyKe.length}</span></div>
+  </div>`;
+}
+function bindProgramsSubTabs_(){
+  document.querySelectorAll('[data-progsub]').forEach(el=>{
+    el.addEventListener('click', ()=>{ UI.programsSub = el.dataset.progsub; renderProgramsHub(); });
+  });
+}
+function renderProgramsHub(){
+  if(!UI.programsSub) UI.programsSub = 'ma_ck';
+  if(UI.programsSub === 'luyke') renderLuyKe(); else renderPrograms();
+}
+window.renderProgramsHub = renderProgramsHub;
 
+function doanhThuSelectorsForProgram_(row){
+  if(!DB.doanhthu.length){
+    return `<div class="section-note" style="border-color:var(--red);color:var(--red)">⚠ Chưa có "Mã doanh thu" nào. Vào menu <b>Danh mục doanh thu SL</b> để khai báo trước khi tạo Mã chiết khấu.</div>`;
+  }
+  const opts = (selectedId) => DB.doanhthu.map(d=>`<option value="${esc(d.id)}" ${selectedId===d.id?'selected':''}>${esc(d.ma)}${d.ten?' — '+esc(d.ten):''} (${esc(d.thoidiem_ck||'')})</option>`).join('');
+  return `
+    <div class="grid grid-2">
+      <div class="field">
+        <label>Mã doanh thu (điều kiện — dùng để xét đạt bậc SL/DT)</label>
+        <select id="f_ma_doanhthu">
+          <option value="">— Chọn Mã doanh thu —</option>
+          ${opts(row.ma_doanhthu)}
+        </select>
+      </div>
+      <div class="field">
+        <label>Mã doanh thu tính chiết khấu <span class="hint">(để trống = dùng chung mã ở trên)</span></label>
+        <select id="f_ma_doanhthu_tinhck">
+          <option value="">— Giống Mã doanh thu điều kiện —</option>
+          ${opts(row.ma_doanhthu_tinhck)}
+        </select>
+      </div>
+    </div>
+    <div class="section-note">VD mở rộng: Mã doanh thu điều kiện = "Toàn bộ đơn hàng" (xét đạt SL/DT chung), nhưng Mã doanh thu tính chiết khấu = riêng "Nhóm lốp TBR" (chỉ nhân % chiết khấu trên đúng doanh thu nhóm này).</div>
+  `;
+}
 function openProgramForm(idx){
   const row = idx!=null ? DB.programs[idx] : {
     ngaytao: todayISO(), hieuluctu:'', hieulucden:'', chuongtrinh_id:'',
     dim_thuonghieu:'NO',dim_nhomkh:'NO',dim_loaisp:'NO',dim_dactinh:'NO',dim_congdung:'NO',dim_quycach:'NO',
+    ma_doanhthu:'', ma_doanhthu_tinhck:'',
     sl_min:0, sl_max:10000, dt_min:0, dt_max:70000000000, thoidiem_ck:'Quý', ht_chietkhau:'PERCENT_GIAMUA', tt_ck:'GIAM_HOADON',
-    dt_kehoach:20000000000, tl_ck:'', dongia_codinh:'', pct_kh_min:0, pct_kh_max:100, dieukien_sldt:'AND', ghichu:''
+    dt_kehoach:'', tl_ck:'', dongia_codinh:'', pct_kh_min:0, pct_kh_max:100, dieukien_sldt:'AND', ghichu:''
   };
   const ctOptions = DB.chuongtrinh.map(ct=>`<option value="${esc(ct.id)}" ${row.chuongtrinh_id===ct.id?'selected':''}>${esc(ct.ma_chuongtrinh)} (${fmtDate(ct.tu_ngay)}→${fmtDate(ct.den_ngay)})</option>`).join('');
   const linked = !!row.chuongtrinh_id;
@@ -2056,7 +3196,7 @@ function openProgramForm(idx){
       <div class="field"><label>Hiệu lực đến ngày</label><input type="date" id="f_hieulucden" value="${esc(row.hieulucden)}" ${linked?'disabled':''}></div>
     </div>
     <div class="hint" id="f_hieuluc_hint" style="margin:-8px 0 12px">${linked?'🔒 Hiệu lực lấy tự động theo chương trình cha đã chọn ở trên.':''}</div>
-    ${dimSelectors('f', row)}
+    ${doanhThuSelectorsForProgram_(row)}
     <div class="grid grid-3">
       <div class="field"><label>Hình thức chiết khấu</label>
         <select id="f_ht_chietkhau">${HT_OPTIONS.map(o=>`<option value="${o.v}" ${row.ht_chietkhau===o.v?'selected':''}>${o.l}</option>`).join('')}</select>
@@ -2088,8 +3228,7 @@ function openProgramForm(idx){
       <div class="field"><label>Tỷ lệ chiết khấu (%)</label><input type="number" step="0.01" id="f_tl_ck" value="${row.tl_ck??''}"></div>
       <div class="field"><label>Số tiền CK cố định (đ/đơn vị)</label><input type="text" inputmode="numeric" id="f_dongia_codinh" value="${fmtIntInputVal(row.dongia_codinh)}" oninput="liveFormatIntInput(this)"></div>
     </div>
-    <div class="field"><label>Doanh thu kế hoạch (đ)</label><input type="text" inputmode="numeric" id="f_dt_kehoach" value="${fmtIntInputVal(row.dt_kehoach)}" oninput="liveFormatIntInput(this)"></div>
-    <div class="section-note">Nếu có khai báo <b>Doanh thu kế hoạch</b>, có thể giới hạn thêm khoảng % hoàn thành kế hoạch bắt buộc để được tính chiết khấu (bỏ trống = không giới hạn).</div>
+    <div class="section-note">📌 <b>Doanh thu kế hoạch</b> KHÔNG còn nhập trực tiếp ở đây — hệ thống tự tham chiếu <b>Danh mục kế hoạch doanh thu</b> theo đúng Mã doanh thu (điều kiện) + ngày. Có thể giới hạn thêm khoảng % hoàn thành kế hoạch bắt buộc để được tính chiết khấu (bỏ trống = không giới hạn).</div>
     <div class="grid grid-2">
       <div class="field"><label>% Kế hoạch Min</label><input type="number" step="0.1" id="f_pct_kh_min" value="${row.pct_kh_min??''}"></div>
       <div class="field"><label>% Kế hoạch Max (0 = không giới hạn)</label><input type="number" step="0.1" id="f_pct_kh_max" value="${row.pct_kh_max??''}"></div>
@@ -2270,9 +3409,16 @@ async function saveProgramForm(idx) {
 
   try {
     const g = (id) => document.getElementById(id).value;
+    const ma_doanhthu = g('f_ma_doanhthu');
+    if(!ma_doanhthu){
+      toast('Vui lòng chọn Mã doanh thu (điều kiện)','err');
+      saveBtn.disabled = false; saveBtn.innerText = originalText;
+      return;
+    }
+    const ma_doanhthu_tinhck = g('f_ma_doanhthu_tinhck') || ma_doanhthu;
+    const dtDims = doanhThuDims_(ma_doanhthu) || {thuonghieu:'NO',nhomkh:'NO',loaisp:'NO',dactinh:'NO',congdung:'NO',quycach:'NO'};
     const dims = {};
-    SINGLE_DIM_KEYS.forEach(k => dims['dim_' + k] = g('f_' + k));
-    MULTI_DIM_KEYS.forEach(k => dims['dim_' + k] = readMultiDimValue('f', k));
+    DIM_KEYS.forEach(k => dims['dim_' + k] = dtDims[k] || 'NO');
     const baseCode = DIM_KEYS.map(k => dims['dim_' + k]).join('_');
     const existingId = idx != null ? DB.programs[idx].id : null;
     let ma_chietkhau;
@@ -2291,6 +3437,7 @@ async function saveProgramForm(idx) {
       hieuluctu: g('f_hieuluctu'), 
       hieulucden: g('f_hieulucden'),
       ...dims, 
+      ma_doanhthu, ma_doanhthu_tinhck,
       ma_chietkhau,
       sl_min: rawIntVal('f_sl_min'), 
       sl_max: rawIntVal('f_sl_max'), 
@@ -2400,6 +3547,7 @@ function renderLuyKe(){
     </tr>`;
   }).join('');
   document.getElementById('content').innerHTML = `
+    ${programsSubTabsHtml_()}
     <div class="section-note">Chương trình chiết khấu lũy kế gắn với 1 "chương trình chiết khấu chính" (thường có Hình thức chiết khấu = "Lũy kế"). Nếu TẤT CẢ các tháng lũy kế đã chọn đều đạt chiết khấu chính (kiểm tra qua báo cáo đã lưu ở REPORT_CKTH), đồng thời tổng cả kỳ cũng đạt bậc SL/DT riêng của chương trình lũy kế này, thì được hưởng thêm % chiết khấu bổ sung tính trên tổng doanh thu mua cả kỳ.</div>
     <div class="card">
       <div class="card-head"><div><h2>Danh sách chương trình chiết khấu lũy kế</h2><div class="hint">${DB.programsLuyKe.length} chương trình</div></div></div>
@@ -2409,6 +3557,7 @@ function renderLuyKe(){
       </table></div>` : `<div class="empty"><div class="big">🧩</div>Chưa có chương trình chiết khấu lũy kế nào.</div>`}
     </div>
   `;
+  bindProgramsSubTabs_();
 }
 function openLuyKeForm(idx){
   const row = idx!=null ? DB.programsLuyKe[idx] : {
@@ -2417,7 +3566,8 @@ function openLuyKeForm(idx){
     thang_luyke:'1,2,3', thoidiem_ck:'Tháng', ck_bosung:'', tt_ck_bosung:'GIAM_HOADON',
     hieuluctu:'', hieulucden:'',
     kieu_tinh:'all_or_reduced', ck_reduced_pct:100,
-    dk1_pct_thang_min:90, dk1_rate:0.5, dk2_pct_ky_min:110, dk2_rate:0.5
+    dk1_pct_thang_min:90, dk1_rate:0.5, dk2_pct_ky_min:110, dk2_rate:0.5,
+    ma_doanhthu_tinhck:''
   };
   const chinhOptions = DB.programs.map(p=>`<option value="${esc(p.id)}" ${row.ma_ck_chinh===p.id?'selected':''}>${esc(p.ma_chietkhau)} (${fmtDate(p.hieuluctu)}→${fmtDate(p.hieulucden)})</option>`).join('');
   const kt = row.kieu_tinh || 'all_or_reduced';
@@ -2425,6 +3575,13 @@ function openLuyKeForm(idx){
     <h3>${idx!=null?'Sửa':'Thêm'} chương trình chiết khấu lũy kế</h3>
     <div class="field"><label>Mã chiết khấu chính</label>
       <select id="lk_ma_ck_chinh"><option value="">— Chọn chương trình chính —</option>${chinhOptions}</select>
+    </div>
+    <div class="field">
+      <label>Mã doanh thu tính chiết khấu bổ sung <span class="hint">(để trống = dùng chung Mã doanh thu của Mã chiết khấu chính)</span></label>
+      <select id="lk_ma_doanhthu_tinhck">
+        <option value="">— Giống Mã chiết khấu chính —</option>
+        ${DB.doanhthu.map(d=>`<option value="${esc(d.id)}" ${row.ma_doanhthu_tinhck===d.id?'selected':''}>${esc(d.ma)}${d.ten?' — '+esc(d.ten):''}</option>`).join('')}
+      </select>
     </div>
     ${monthCheckboxBox('lk', row.thang_luyke)}
     <div class="grid grid-2">
@@ -2496,6 +3653,7 @@ async function saveLuyKeForm(idx){
   const row = {
     id: idx!=null ? DB.programsLuyKe[idx].id : uid(),
     ma_ck_chinh, thang_luyke,
+    ma_doanhthu_tinhck: document.getElementById('lk_ma_doanhthu_tinhck').value || '',
     thoidiem_ck: document.getElementById('lk_thoidiem_ck').value,
     tt_ck_bosung: document.getElementById('lk_tt_ck_bosung').value,
     kieu_tinh: document.getElementById('lk_kieu_tinh').value,
@@ -2545,16 +3703,28 @@ function exportLuyKeXlsx(){
 }
 
 /* ============================ PURCHASES ============================ */
-function renderPurchases(){
+async function renderPurchases(){
   document.getElementById('topbarActions').innerHTML = `
-    <button class="btn" id="btnReloadPurchases">${ICON.download||''} Nạp lại dữ liệu</button>
+    <button class="btn" id="btnReloadPurchases">${ICON.download||''} Nạp lại dữ liệu (theo NCC đã chọn)</button>
     <button class="btn btn-danger" id="btnClearPurchases">${ICON.trash} Xóa toàn bộ</button>
     <button class="btn btn-primary" id="btnImportPurchases">${ICON.upload} Tải file Sổ chi tiết mua hàng (.xlsx)</button>
   `;
   document.getElementById('btnImportPurchases').onclick = () => triggerFileImport(handlePurchasesFile);
+  // THEO YÊU CẦU: "Nạp lại dữ liệu" giờ CHỈ nạp lại đúng các NCC đang được chọn ở khung bên dưới (nếu
+  // trước đó đã từng tải TOÀN BỘ thì tải lại toàn bộ, giữ đúng ý người dùng đang xem) — không còn âm
+  // thầm kéo về toàn bộ ~1.400+ dòng như trước.
   document.getElementById('btnReloadPurchases').onclick = async () => {
-    loadingPane_('Đang nạp lại dữ liệu Mua hàng...');
-    try{ await ensurePurchasesLoaded(true); toast('Đã nạp lại dữ liệu Mua hàng','ok'); }
+    const sel = UI._purchaseLoadSelected || [];
+    if(purchasesFullyLoaded_()){
+      loadingPane_('Đang nạp lại toàn bộ dữ liệu Mua hàng...');
+      try{ await ensurePurchasesLoaded(true); toast('Đã nạp lại dữ liệu Mua hàng','ok'); }
+      catch(e){ toast('Lỗi nạp lại: '+(e.message||e),'err'); }
+      renderPurchases();
+      return;
+    }
+    if(!sel.length){ toast('Hãy chọn ít nhất 1 Nhà cung cấp ở khung "Chọn Nhà cung cấp cần nạp dữ liệu" bên dưới trước khi nạp lại.', 'err'); return; }
+    loadingPane_(`Đang nạp lại dữ liệu Mua hàng (${sel.length} NCC đã chọn)...`);
+    try{ await ensurePurchasesLoadedFiltered(sel, true); toast('Đã nạp lại dữ liệu Mua hàng','ok'); }
     catch(e){ toast('Lỗi nạp lại: '+(e.message||e),'err'); }
     renderPurchases();
   };
@@ -2572,6 +3742,7 @@ function renderPurchases(){
     if(!f.to) f.to = todayISO();
     UI._purchaseFilterInit = true;
   }
+  if(!UI._purchaseLoadSelected) UI._purchaseLoadSelected = [];
 
   const suppliers = [...new Set(DB.purchases.map(r=>r.nhacungcap).filter(Boolean))].sort();
   const dimOptions = (dimKey) => `<option value="">Tất cả</option>` +
@@ -2579,13 +3750,13 @@ function renderPurchases(){
 
   document.getElementById('content').innerHTML = `
     <div class="card" id="purchaseFilterCard">
-      <div class="card-head"><div><h2>Bộ lọc sổ chi tiết mua hàng</h2><div class="hint">Chỉnh xong bấm "Áp dụng bộ lọc" (hoặc Enter) để xem kết quả — tránh bị ngắt khi đang gõ ngày</div></div></div>
+      <div class="card-head"><div><h2>Bộ lọc sổ chi tiết mua hàng</h2><div class="hint">Chỉnh xong bấm "Áp dụng bộ lọc" (hoặc Enter) để xem kết quả trên dữ liệu ĐÃ nạp — nếu chưa nạp gì, hãy chọn NCC ở khung bên dưới trước.</div></div></div>
       <div class="grid grid-4" style="margin-bottom:12px">
         <div class="field" style="margin:0"><label>Từ ngày</label><input type="date" id="pf_from" value="${f.from||''}" onkeydown="if(event.key==='Enter')applyPurchaseFilters()"></div>
         <div class="field" style="margin:0"><label>Đến ngày</label><input type="date" id="pf_to" value="${f.to||''}" onkeydown="if(event.key==='Enter')applyPurchaseFilters()"></div>
-        <div class="field" style="margin:0"><label>Nhà cung cấp</label>
+        <div class="field" style="margin:0"><label>Nhà cung cấp (lọc hiển thị)</label>
           <select id="pf_supplier" onchange="applyPurchaseFilters()">
-            <option value="">Tất cả</option>
+            <option value="">Tất cả (trong số đã nạp)</option>
             ${suppliers.map(s=>`<option value="${esc(s)}" ${f.supplier===s?'selected':''}>${esc(s)}</option>`).join('')}
           </select>
         </div>
@@ -2604,14 +3775,87 @@ function renderPurchases(){
         <div class="field" style="margin:0;display:flex;align-items:flex-end"><button class="btn" style="width:100%" onclick="resetPurchaseFilters()">Xóa bộ lọc</button></div>
       </div>
     </div>
-    <div id="purchaseResultsWrap"></div>
+    <div class="card" id="purchaseLoadScopeCard" style="margin-top:12px">
+      <div class="card-head"><div><h2>Chọn Nhà cung cấp cần nạp dữ liệu</h2><div class="hint">Chỉ nạp ĐÚNG (các) NCC bạn chọn lên trình duyệt — tránh tải toàn bộ ~1.400+ dòng khi không cần, giúp nhẹ máy và nhanh hơn. Bộ lọc phía trên chỉ áp dụng trên dữ liệu ĐÃ nạp ở đây, không tự tải thêm.</div></div></div>
+      <div id="supplierLoadCheckboxes" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${renderSupplierCheckboxes_()}</div>
+      <div class="btn-row">
+        <button class="btn btn-sm" onclick="toggleAllPurchaseSuppliers_(true)">Chọn tất cả</button>
+        <button class="btn btn-sm" onclick="toggleAllPurchaseSuppliers_(false)">Bỏ chọn tất cả</button>
+        <button class="btn btn-primary" onclick="loadSelectedPurchaseSuppliers_()">${ICON.download||''} Nạp dữ liệu NCC đã chọn</button>
+        <span class="hint" style="align-self:center;margin-left:6px" id="purchaseLoadStatusHint">${purchaseLoadStatusText_()}</span>
+      </div>
+    </div>
+    <div id="purchaseResultsWrap" style="margin-top:12px"></div>
   `;
+  bindSupplierCheckboxEvents_();
   if(!DB._purchasesLoaded){
-    document.getElementById('purchaseResultsWrap').innerHTML = `<div class="card"><div class="empty"><div class="big">📦</div>Chưa tải dữ liệu Mua hàng (1.400+ dòng). Bấm <b>"Áp dụng bộ lọc"</b> để tải và lọc theo điều kiện, tránh phải tải hết toàn bộ.</div></div>`;
+    document.getElementById('purchaseResultsWrap').innerHTML = `<div class="card"><div class="empty"><div class="big">📦</div>Chưa nạp dữ liệu Mua hàng. Hãy chọn ít nhất 1 Nhà cung cấp ở khung <b>"Chọn Nhà cung cấp cần nạp dữ liệu"</b> bên dưới rồi bấm <b>"Nạp dữ liệu NCC đã chọn"</b>.</div></div>`;
   } else {
     renderPurchaseResults();
   }
+  // Tải danh sách NCC (nhẹ, chỉ 1 cột) để hiện ô chọn — kể cả khi CHƯA nạp dữ liệu Mua hàng nào, tránh
+  // vòng lặp "phải nạp hết mới biết có NCC nào để chọn nạp theo NCC".
+  if(!UI._purchaseSupplierOptions){
+    try{
+      const list = await new Promise((res, rej)=>{
+        google.script.run.withSuccessHandler(res).withFailureHandler(rej).getDistinctPurchaseSuppliers();
+      });
+      UI._purchaseSupplierOptions = list || [];
+      const wrap = document.getElementById('supplierLoadCheckboxes');
+      if(wrap){ wrap.innerHTML = renderSupplierCheckboxes_(); bindSupplierCheckboxEvents_(); }
+    }catch(e){ /* im lặng — vẫn có thể dùng "Nạp lại dữ liệu (toàn bộ)" nếu trước đó từng tải toàn bộ */ }
+  }
 }
+function purchaseLoadStatusText_(){
+  if(purchasesFullyLoaded_()) return `Đang tải: TOÀN BỘ Nhà cung cấp (${DB.purchases.length} dòng)`;
+  if(Array.isArray(DB._purchasesScope) && DB._purchasesScope.length) return `Đang tải: ${DB._purchasesScope.length} NCC đã chọn (${DB.purchases.length} dòng)`;
+  return 'Chưa nạp dữ liệu nào';
+}
+function renderSupplierCheckboxes_(){
+  const options = UI._purchaseSupplierOptions;
+  if(!options) return `<div class="hint">Đang tải danh sách Nhà cung cấp...</div>`;
+  if(!options.length) return `<div class="hint">Chưa có dữ liệu Nhà cung cấp nào trong Sổ mua hàng.</div>`;
+  const selected = UI._purchaseLoadSelected || [];
+  return options.map(s=>{
+    const checked = selected.indexOf(s) !== -1;
+    return `<label class="supplier-chip" style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--slate-200);border-radius:16px;font-size:12.5px;cursor:pointer;background:${checked?'var(--emerald-soft)':'#fff'}">
+      <input type="checkbox" data-supplier="${esc(s)}" ${checked?'checked':''} style="margin:0">${esc(s)}
+    </label>`;
+  }).join('');
+}
+function bindSupplierCheckboxEvents_(){
+  document.querySelectorAll('#supplierLoadCheckboxes input[data-supplier]').forEach(el=>{
+    el.addEventListener('change', ()=>{
+      const s = el.dataset.supplier;
+      if(!UI._purchaseLoadSelected) UI._purchaseLoadSelected = [];
+      const idx = UI._purchaseLoadSelected.indexOf(s);
+      if(el.checked && idx===-1) UI._purchaseLoadSelected.push(s);
+      if(!el.checked && idx!==-1) UI._purchaseLoadSelected.splice(idx,1);
+      const label = el.closest('.supplier-chip');
+      if(label) label.style.background = el.checked ? 'var(--emerald-soft)' : '#fff';
+    });
+  });
+}
+function toggleAllPurchaseSuppliers_(all){
+  UI._purchaseLoadSelected = all ? (UI._purchaseSupplierOptions||[]).slice() : [];
+  const wrap = document.getElementById('supplierLoadCheckboxes');
+  if(wrap){ wrap.innerHTML = renderSupplierCheckboxes_(); bindSupplierCheckboxEvents_(); }
+}
+window.toggleAllPurchaseSuppliers_ = toggleAllPurchaseSuppliers_;
+async function loadSelectedPurchaseSuppliers_(){
+  const sel = UI._purchaseLoadSelected || [];
+  if(!sel.length){ toast('Hãy chọn ít nhất 1 Nhà cung cấp trước khi nạp.', 'err'); return; }
+  const wrap = document.getElementById('purchaseResultsWrap');
+  if(wrap) wrap.innerHTML = `<div class="card"><div class="empty"><div class="big">🔄</div>Đang tải dữ liệu Mua hàng (${sel.length} NCC đã chọn)...</div></div>`;
+  try{
+    await ensurePurchasesLoadedFiltered(sel);
+    toast(`Đã nạp dữ liệu Mua hàng của ${sel.length} NCC đã chọn`, 'ok');
+    const hint = document.getElementById('purchaseLoadStatusHint');
+    if(hint) hint.textContent = purchaseLoadStatusText_();
+    renderPurchaseResults();
+  }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e), 'err'); }
+}
+window.loadSelectedPurchaseSuppliers_ = loadSelectedPurchaseSuppliers_;
 async function applyPurchaseFilters(){
   UI.purchaseFilters = {
     from: document.getElementById('pf_from').value,
@@ -2626,13 +3870,12 @@ async function applyPurchaseFilters(){
     quycach: document.getElementById('pf_quycach').value
   };
   UI._purchaseFilterInit = true;
-  // THEO Ý KIẾN NGƯỜI DÙNG: chỉ tải dữ liệu Mua hàng ngay khi bấm "Áp dụng bộ lọc" lần đầu, không tải
-  // sẵn lúc vào trang.
+  // THEO YÊU CẦU: "Áp dụng bộ lọc" giờ CHỈ lọc trên dữ liệu ĐÃ NẠP — không còn tự động âm thầm tải
+  // TOÀN BỘ dữ liệu nếu chưa có gì (đi ngược mục đích giảm tải). Nếu chưa nạp gì, nhắc người dùng chọn
+  // NCC ở khung bên dưới trước.
   if(!DB._purchasesLoaded){
-    const wrap = document.getElementById('purchaseResultsWrap');
-    if(wrap) wrap.innerHTML = `<div class="card"><div class="empty"><div class="big">🔄</div>Đang tải dữ liệu Mua hàng...</div></div>`;
-    try{ await ensurePurchasesLoaded(); }
-    catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); return; }
+    toast('Chưa có dữ liệu Mua hàng nào được nạp — hãy chọn Nhà cung cấp ở khung bên dưới rồi bấm "Nạp dữ liệu NCC đã chọn" trước.', 'err');
+    return;
   }
   renderPurchaseResults();
 }
@@ -2898,6 +4141,220 @@ function ckctMatchesSupplier(row, supplier){
 // ngày" — nguyên nhân gây trùng thực tế (do upsert chỉ ghi đè khi Từ ngày–Đến ngày khớp CHÍNH XÁC,
 // nếu lệch dù 1 ngày sẽ tạo thêm dòng mới thay vì cập nhật). Kiểm tra cả trùng khóa chính xác (hiếm khi
 // xảy ra vì upsert đã chặn, nhưng vẫn kiểm tra phòng trường hợp sửa tay trực tiếp trên Sheet).
+// THEO YÊU CẦU: tính sẵn 1 "kế hoạch dọn dẹp" (không tự áp dụng ngay) để người dùng xem trước số lượng
+// sẽ bị xoá trước khi xác nhận. Quy tắc chọn khoảng ngày GIỮ LẠI cho mỗi (chương trình, tháng, năm)
+// đang có >1 khoảng ngày khác nhau (nguyên nhân gây trùng):
+//   1) Ưu tiên khoảng ngày KHỚP ĐÚNG ranh giới kỳ chuẩn (dùng lại đúng snapPeriodFromDate() — cùng công
+//      thức mà "Tự động tính & lưu" luôn dùng) — đây gần như chắc chắn là bản ĐÚNG.
+//   2) Nếu không khoảng nào khớp chuẩn (VD dùng "Tùy chọn"/"Theo hiệu lực CTKM" nên không có ranh giới
+//      để đối chiếu), giữ khoảng XUẤT HIỆN CUỐI trong mảng — heuristic hợp lý nhất khi không có trường
+//      "thời gian lưu" để biết chắc bản nào mới hơn (xem giải thích tại saveSheetData/appendOrUpsertRows_).
+// Sau đó áp dụng đúng quyết định "khoảng ngày giữ lại" của CKTH sang CKCT (khớp theo program_id +
+// tháng/năm suy ra từ den_ngay — cùng cách checkDuplicateReports() đang nhóm CKCT), và cuối cùng khử
+// nốt các dòng trùng khóa chính xác còn sót (hiếm, chỉ do sửa tay trực tiếp trên Sheet).
+function buildDedupPlan_(){
+  const ckth = DB.reportCKTH || [];
+  const ckct = DB.reportCKCT || [];
+  const keepRangeByGroup = {};
+  const groups = {};
+  ckth.forEach(r=>{
+    const k = [r.program_id, r.thang_chietkhau, r.nam_chietkhau].join('||');
+    (groups[k] = groups[k] || []).push(r);
+  });
+  Object.entries(groups).forEach(([k, rows])=>{
+    const ranges = [...new Set(rows.map(r=>r.tu_ngay+'~'+r.den_ngay))];
+    if(ranges.length<=1){ if(ranges[0]) keepRangeByGroup[k]=ranges[0]; return; }
+    let canonical = null;
+    for(const range of ranges){
+      const sample = rows.find(r=>(r.tu_ngay+'~'+r.den_ngay)===range);
+      const snap = snapPeriodFromDate(sample.tu_ngay, sample.thoidiem_chietkhau);
+      if(snap && snap.from===sample.tu_ngay && snap.to===sample.den_ngay){ canonical = range; break; }
+    }
+    keepRangeByGroup[k] = canonical || ranges[ranges.length-1];
+  });
+
+  const ckthAfterRange = ckth.filter(r=>{
+    const k = [r.program_id, r.thang_chietkhau, r.nam_chietkhau].join('||');
+    const keep = keepRangeByGroup[k];
+    return !keep || (r.tu_ngay+'~'+r.den_ngay)===keep;
+  });
+  const ckctAfterRange = ckct.filter(r=>{
+    const dt = r.den_ngay ? new Date(r.den_ngay) : null;
+    if(!dt) return true;
+    const k = [r.program_id, dt.getMonth()+1, dt.getFullYear()].join('||');
+    const keep = keepRangeByGroup[k];
+    return !keep || (r.tu_ngay+'~'+r.den_ngay)===keep;
+  });
+
+  function dedupExact(list, keyFn){
+    const lastIdx = {};
+    list.forEach((r,i)=>{ lastIdx[keyFn(r)] = i; });
+    return list.filter((r,i)=> lastIdx[keyFn(r)]===i);
+  }
+  const finalCkth = dedupExact(ckthAfterRange, r=>[r.program_id,r.tu_ngay,r.den_ngay].join('||'));
+  const finalCkct = dedupExact(ckctAfterRange, r=>[r.program_id,r.tu_ngay,r.den_ngay,r.mahang].join('||'));
+
+  return {
+    finalCkth, finalCkct,
+    removedCkth: ckth.length - finalCkth.length,
+    removedCkct: ckct.length - finalCkct.length
+  };
+}
+// Áp dụng kế hoạch dọn dẹp: GHI ĐÈ TOÀN BỘ (không phải upsert) 2 sheet REPORT_CKTH/REPORT_CKCT bằng
+// đúng danh sách đã lọc — cần overwrite thật sự vì mục tiêu là XOÁ bớt dòng, upsert không xoá được.
+async function applyDedupPlan_(){
+  const plan = buildDedupPlan_();
+  if(plan.removedCkth===0 && plan.removedCkct===0){ toast('Không có gì để dọn dẹp.','ok'); return; }
+  if(!confirm(`Sẽ xoá ${plan.removedCkth} dòng báo cáo tổng hợp và ${plan.removedCkct} dòng chi tiết bị trùng, chỉ giữ lại đúng 1 khoảng ngày hợp lệ nhất cho mỗi tháng. Hành động này KHÔNG thể hoàn tác (không có thùng rác). Tiếp tục?`)) return;
+  closeModal();
+  toast('Đang dọn dẹp dữ liệu trùng lặp...', 'ok');
+  try{
+    await new Promise((res,rej)=>{
+      google.script.run.withSuccessHandler(res).withFailureHandler(rej).overwriteReportCKTH(plan.finalCkth);
+    });
+    const version = await new Promise((res,rej)=>{
+      google.script.run.withSuccessHandler(res).withFailureHandler(rej).overwriteReportCKCT(plan.finalCkct);
+    });
+    DB.reportCKTH = plan.finalCkth;
+    DB.reportCKCT = plan.finalCkct;
+    writeCache(version, snapshotDB());
+    toast(`Đã dọn dẹp xong: xoá ${plan.removedCkth} dòng CKTH, ${plan.removedCkct} dòng CKCT.`, 'ok');
+    if(UI.tab==='baocao') renderBaoCao();
+  }catch(err){
+    toast('Lỗi khi dọn dẹp: '+(err.message||err), 'err');
+  }
+}
+window.applyDedupPlan_ = applyDedupPlan_;
+
+/* ============================ BẢNG THEO DÕI CHIẾT KHẤU (theo Chương trình / Mã chiết khấu) ============================ */
+// THEO YÊU CẦU: liệt kê từng Mã chiết khấu (Tầng 2), tách theo TỪNG KỲ (Tháng/Quý/6 Tháng/Năm — theo
+// đúng "Thời điểm tính CK" đã khai trên mã đó) trong suốt khoảng hiệu lực của nó, và cho biết kỳ đó ĐÃ
+// được tính & lưu báo cáo hay CHƯA, kèm mô tả dễ hiểu về cách tính. Không tạo dữ liệu mới, không đụng
+// Sheet — chỉ ĐỌC DB.programs/DB.chuongtrinh/DB.dieukien/DB.reportCKTH đã có sẵn trong bộ nhớ.
+
+// Chia khoảng [fromISO, toISO_] thành các kỳ chuẩn (Tháng/Quý/6 Tháng/Năm) bằng đúng snapPeriodFromDate
+// đã dùng ở nơi khác trong app (chống trùng báo cáo) — đảm bảo các kỳ liệt kê ở đây khớp CHÍNH XÁC với
+// khoảng ngày mà "Tự động tính & lưu"/"Lưu báo cáo" thủ công sẽ dùng cho cùng kỳ đó.
+function enumeratePeriods_(fromISO, toISO_, thoidiem){
+  if(!fromISO) return [];
+  const endISO = toISO_ || todayISO(); // còn hiệu lực (chưa có ngày kết thúc) -> chỉ liệt kê tới kỳ hiện tại
+  const stepMonths = { 'Tháng':1, 'Quý':3, '6 Tháng':6, 'Năm':12 };
+  if(!stepMonths[thoidiem]){
+    // 'Theo hiệu lực CTKM' hoặc để trống -> không có ranh giới kỳ chuẩn để tách, coi cả khoảng là 1 kỳ
+    return [{ from: fromISO, to: endISO }];
+  }
+  const periods = [];
+  let cursor = fromISO;
+  let guard = 0;
+  while(cursor <= endISO && guard < 400){
+    const snap = snapPeriodFromDate(cursor, thoidiem);
+    if(!snap) break;
+    periods.push(snap);
+    if(snap.to >= endISO) break;
+    const next = new Date(snap.to);
+    next.setDate(next.getDate()+1);
+    const nextISO = toISO(next);
+    if(nextISO <= cursor) break; // phòng vòng lặp vô hạn nếu dữ liệu ngày bất thường
+    cursor = nextISO;
+    guard++;
+  }
+  return periods;
+}
+// Mô tả dễ hiểu cách tính của 1 mã chiết khấu (hoặc 1 bậc điều kiện con của nó nếu có)
+function describeCalcBac_(p){
+  const ht = HT_OPTIONS.find(o=>o.v===p.ht_chietkhau)?.l || p.ht_chietkhau || '?';
+  const muc = p.ht_chietkhau==='DONGIA_CODINH' ? (fmtVND(p.dongia_codinh||0)+'/đơn vị') : fmtPct(p.tl_ck||0);
+  const slTxt = (Number(p.sl_min)||Number(p.sl_max)) ? `SL ${fmtNum(p.sl_min||0)}${Number(p.sl_max)?'–'+fmtNum(p.sl_max):'+'}` : '';
+  const dtTxt = (Number(p.dt_min)||Number(p.dt_max)) ? `DT ${fmtVND(p.dt_min||0)}${Number(p.dt_max)?'–'+fmtVND(p.dt_max):'+'}` : '';
+  const logic = (p.dieukien_sldt==='OR') ? 'HOẶC' : 'VÀ';
+  const dkTxt = [slTxt, dtTxt].filter(Boolean).join(` ${logic} `);
+  const khTxt = (p.pct_kh_min || p.pct_kh_max) ? ` · %KH ${fmtPct(p.pct_kh_min||0)}–${Number(p.pct_kh_max)?fmtPct(p.pct_kh_max):'∞'}` : '';
+  return `${ht} ${muc}${dkTxt?(' khi đạt '+dkTxt):''}${khTxt}`;
+}
+function describeCalcMethod_(prog, bacList){
+  if(!bacList.length) return describeCalcBac_(prog);
+  return bacList.map((b,i)=>`Bậc ${i+1}: ${describeCalcBac_(Object.assign({}, prog, b))}`).join('  |  ');
+}
+// Mô tả cách tính CHIẾT KHẤU LŨY KẾ (chiết khấu bổ sung) — cấu trúc trường khác hẳn mã chiết khấu
+// chính (dual_condition dùng 2 điều kiện độc lập cộng dồn; all_or_reduced dùng điều kiện "đủ tháng").
+function describeBonusCalc_(lk){
+  if((lk.kieu_tinh||'all_or_reduced')==='dual_condition'){
+    return `2 điều kiện độc lập, cộng dồn %: ĐK1 mỗi tháng đạt ≥ ${fmtPct(lk.dk1_pct_thang_min||90)} KH tháng → +${fmtPct(lk.dk1_rate||0)}; ĐK2 cả kỳ đạt ≥ ${fmtPct(lk.dk2_pct_ky_min||110)} KH kỳ → +${fmtPct(lk.dk2_rate||0)} (đạt cả 2 thì cộng cả hai)`;
+  }
+  const thangList = String(lk.thang_luyke||'').split(',').filter(Boolean);
+  const reducedTxt = (lk.ck_reduced_pct!=null && lk.ck_reduced_pct!=='' && Number(lk.ck_reduced_pct)!==100)
+    ? ` (lỡ 1+ tháng nhưng cả kỳ vẫn đạt bậc riêng thì hưởng giảm còn ${fmtPct(lk.ck_reduced_pct)})` : '';
+  return `Đạt chiết khấu chính đủ ${thangList.length||'?'} tháng đã chọn (Tháng ${thangList.join(', ')||'?'}) VÀ đạt bậc riêng SL ${fmtNum(lk.sl_min||0)}${Number(lk.sl_max)?'–'+fmtNum(lk.sl_max):'+'} / DT ${fmtVND(lk.dt_min||0)}${Number(lk.dt_max)?'–'+fmtVND(lk.dt_max):'+'} cả kỳ → +${fmtPct(lk.ck_bosung||0)}${reducedTxt}`;
+}
+// Xây dựng toàn bộ dữ liệu bảng theo dõi — 1 dòng / (Mã chiết khấu × kỳ) trong suốt hiệu lực.
+function buildDiscountTrackingData_(){
+  const rows = [];
+  // TỐI ƯU: trước đây dùng (DB.reportCKTH||[]).find(...) BÊN TRONG 2 vòng lặp lồng nhau (từng chương
+  // trình × từng kỳ) — độ phức tạp O(số chương trình × số kỳ × số dòng REPORT_CKTH), sẽ chậm dần khi
+  // REPORT_CKTH phình to theo thời gian (đúng bảng đang được dùng để tính năng này). Nay dựng sẵn 1 Map
+  // tra cứu theo khóa (program_id, tu_ngay, den_ngay) DUY NHẤT 1 LẦN — mỗi kỳ tra cứu O(1) thay vì quét
+  // lại toàn bộ REPORT_CKTH mỗi lần.
+  const ckthMap = new Map();
+  const ckthByProgram = new Map(); // dùng riêng cho Chiết khấu lũy kế (xem bên dưới)
+  (DB.reportCKTH||[]).forEach(r=>{
+    ckthMap.set(String(r.program_id||'')+'||'+String(r.tu_ngay||'')+'||'+String(r.den_ngay||''), r);
+    const pid = String(r.program_id||'');
+    if(!ckthByProgram.has(pid)) ckthByProgram.set(pid, []);
+    ckthByProgram.get(pid).push(r);
+  });
+  (DB.programs||[]).forEach(prog=>{
+    const ct = DB.chuongtrinh.find(c=>c.id===prog.chuongtrinh_id);
+    const bacList = (DB.dieukien||[]).filter(d=>d.program_id===prog.id);
+    const cachTinh = describeCalcMethod_(prog, bacList);
+    const periods = enumeratePeriods_(prog.hieuluctu, prog.hieulucden, prog.thoidiem_ck);
+    const base = { chuongtrinh: ct ? ct.ma_chuongtrinh : '(không thuộc chương trình nào)', maCK: prog.ma_chietkhau, progId: prog.id, cachTinh, thoidiem: prog.thoidiem_ck||'' };
+    if(!periods.length){
+      rows.push(Object.assign({}, base, { tu:'', den:'', daThucHien:false, trangThai:null, soTienCK:null, ghiChu:'Chưa khai Hiệu lực từ ngày — chưa thể xác định kỳ tính' }));
+      return;
+    }
+    periods.forEach(p=>{
+      const rec = ckthMap.get(String(prog.id)+'||'+p.from+'||'+p.to);
+      rows.push(Object.assign({}, base, {
+        tu: p.from, den: p.to,
+        daThucHien: !!rec,
+        trangThai: rec ? (norm(rec.trangthai)==='DAT' ? 'Đạt' : 'Chưa đạt') : null,
+        soTienCK: rec ? Number(rec.so_tien_chietkhau||0) : null
+      }));
+    });
+  });
+  // THEO YÊU CẦU: Chiết khấu lũy kế (chiết khấu bổ sung) cũng được lưu vào ĐÚNG REPORT_CKTH/CKCT, chỉ
+  // khác là dùng program_id = id của chính chương trình lũy kế đó (khác id chương trình chính), mã hiển
+  // thị có hậu tố "_BOSUNG" (xem saveBonusReport()) — nhưng buildDiscountTrackingData_ trước đây CHỈ
+  // quét DB.programs nên các bản ghi này không hiện ra dù thực tế đã lưu đủ. Bổ sung quét thêm
+  // DB.programsLuyKe ở đây. KHÁC với mã chính: kỳ lũy kế do người dùng TỰ CHỌN Từ ngày-Đến ngày mỗi lần
+  // tính (không theo lưới Tháng/Quý/Năm cố định như enumeratePeriods_), nên KHÔNG thể "dự đoán trước"
+  // các kỳ sẽ có — chỉ liệt kê đúng những kỳ ĐÃ THỰC SỰ được lưu (nếu chưa lưu lần nào thì hiện 1 dòng
+  // nhắc "Chưa lưu báo cáo bổ sung nào" thay vì bỏ trống hoàn toàn, để không bị hiểu nhầm là bỏ sót).
+  (DB.programsLuyKe||[]).forEach(lk=>{
+    const baseProg = DB.programs.find(p=>p.id===lk.ma_ck_chinh);
+    const ct = baseProg ? DB.chuongtrinh.find(c=>c.id===baseProg.chuongtrinh_id) : null;
+    const maCK = (baseProg ? baseProg.ma_chietkhau : '?') + '_BOSUNG';
+    const cachTinh = describeBonusCalc_(lk);
+    const base = { chuongtrinh: ct ? ct.ma_chuongtrinh : '(không thuộc chương trình nào)', maCK, progId: lk.id, cachTinh, thoidiem:'(kỳ tự chọn)' };
+    const saved = (ckthByProgram.get(String(lk.id)) || []).sort((a,b)=>String(b.tu_ngay||'').localeCompare(String(a.tu_ngay||'')));
+    if(!saved.length){
+      rows.push(Object.assign({}, base, { tu: lk.hieuluctu||'', den: lk.hieulucden||'', daThucHien:false, trangThai:null, soTienCK:null, ghiChu:'Chưa lưu báo cáo bổ sung nào — kỳ lũy kế do người dùng tự chọn Từ ngày-Đến ngày, không cố định theo Tháng/Quý' }));
+      return;
+    }
+    saved.forEach(rec=>{
+      rows.push(Object.assign({}, base, {
+        tu: rec.tu_ngay, den: rec.den_ngay,
+        daThucHien: true,
+        trangThai: norm(rec.trangthai)==='DAT' ? 'Đạt' : 'Chưa đạt',
+        soTienCK: Number(rec.so_tien_chietkhau||0)
+      }));
+    });
+  });
+  // Mới nhất lên trước cho dễ theo dõi kỳ hiện tại
+  rows.sort((a,b)=> (b.tu||'').localeCompare(a.tu||'') || String(a.chuongtrinh).localeCompare(String(b.chuongtrinh)));
+  return rows;
+}
+
 function checkDuplicateReports(){
   openModal(`<h3>Đang kiểm tra chiết khấu trùng...</h3><div class="empty"><div class="big">🔍</div>Vui lòng chờ...</div>`);
 
@@ -2944,6 +4401,7 @@ function checkDuplicateReports(){
   };
 
   const totalIssues = monthConflicts.length + exactDup.length + ckctConflicts.length;
+  const dedupPlan = totalIssues>0 ? buildDedupPlan_() : null;
 
   const monthConflictHtml = monthConflicts.map(([k,rows])=>{
     const [pid, thang, nam] = k.split('||');
@@ -2976,14 +4434,109 @@ function checkDuplicateReports(){
       ${ckctConflicts.length>20?`<div class="hint">...còn ${ckctConflicts.length-20} dòng khác</div>`:''}
     </div>` : ''}
 
-    ${totalIssues>0 ? `<div class="section-note">Cách xử lý: vào tab "Báo cáo chiết khấu" hoặc trực tiếp Google Sheet REPORT_CKTH/REPORT_CKCT, xóa dòng có khoảng ngày SAI (không đúng 01 đến ngày cuối tháng), chỉ giữ lại đúng 1 dòng/tháng, rồi bấm "Làm mới dữ liệu" trong app.</div>` : ''}
+    ${totalIssues>0 ? `<div class="section-note">
+      <b>Dọn dẹp tự động:</b> sẽ giữ lại đúng 1 khoảng ngày hợp lệ nhất cho mỗi tháng bị trùng (ưu tiên khoảng khớp đúng ranh giới kỳ chuẩn Tháng/Quý/6 Tháng/Năm), xoá các dòng còn lại — dự kiến xoá <b>${dedupPlan.removedCkth}</b> dòng CKTH và <b>${dedupPlan.removedCkct}</b> dòng CKCT. Không thể hoàn tác, nên bấm "Làm mới dữ liệu" trước để chắc chắn đang xem đúng dữ liệu mới nhất.
+    </div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:6px"><button class="btn btn-danger" onclick="applyDedupPlan_()">🧹 Dọn dẹp trùng lặp tự động</button></div>` : ''}
     <div class="btn-row" style="justify-content:flex-end;margin-top:8px"><button class="btn btn-primary" onclick="closeModal()">Đóng</button></div>
   `);
 }
 window.checkDuplicateReports = checkDuplicateReports;
+
+// THEO YÊU CẦU: bảng mô tả chiết khấu theo Từ ngày–Đến ngày, theo từng Chương trình/Mã chiết khấu, cho
+// biết kỳ nào đã thực hiện (đã tính & lưu báo cáo) hay chưa, và cách tính ra sao.
+if(!UI._trackingFilter) UI._trackingFilter = { chuongtrinh:'', trangthai:'' };
+function renderDiscountTrackingBody_(){
+  const all = buildDiscountTrackingData_();
+  const f = UI._trackingFilter;
+  const rows = all.filter(r=>{
+    if(f.chuongtrinh && r.progId!==f.chuongtrinh) return false;
+    if(f.trangthai==='chua') return !r.daThucHien;
+    if(f.trangthai==='dat') return r.daThucHien && r.trangThai==='Đạt';
+    if(f.trangthai==='chuadat') return r.daThucHien && r.trangThai==='Chưa đạt';
+    return true;
+  });
+  UI._trackingRowsCache = all; // dùng lại cho xuất Excel (xuất theo bộ lọc hiện tại)
+  // Lấy danh sách mã để lọc từ chính dữ liệu đã build (all) — tự động bao gồm cả mã lũy kế (_BOSUNG),
+  // không chỉ Mã chiết khấu chính như trước.
+  const seenProg = new Map();
+  all.forEach(r=>{ if(!seenProg.has(r.progId)) seenProg.set(r.progId, r.maCK); });
+  const progOptions = [...seenProg.entries()].map(([id,ma])=>`<option value="${esc(id)}" ${f.chuongtrinh===id?'selected':''}>${esc(ma)}</option>`).join('');
+  const doneCount = all.filter(r=>r.daThucHien).length;
+  const rowsHtml = rows.map(r=>`
+    <tr>
+      <td>${esc(r.chuongtrinh)}</td>
+      <td class="mono">${esc(r.maCK)}</td>
+      <td class="mono">${r.tu?fmtDate(r.tu):'—'}</td>
+      <td class="mono">${r.den?fmtDate(r.den):'—'}</td>
+      <td>${r.daThucHien ? `<span class="tag ${r.trangThai==='Đạt'?'tag-ok':'tag-no'}">✓ Đã thực hiện — ${esc(r.trangThai)}</span>` : `<span class="tag">Chưa thực hiện</span>`}</td>
+      <td class="num mono">${r.soTienCK!=null?fmtVND(r.soTienCK):'—'}</td>
+      <td style="font-size:11.5px;color:var(--slate-500)">${esc(r.ghiChu||r.cachTinh)}</td>
+    </tr>`).join('');
+  return `
+    <div class="btn-row" style="margin-bottom:10px">
+      <select id="trkFilterCT" onchange="UI._trackingFilter.chuongtrinh=this.value;refreshDiscountTrackingTable_()" style="min-width:200px">
+        <option value="">Tất cả mã chiết khấu</option>${progOptions}
+      </select>
+      <select id="trkFilterTT" onchange="UI._trackingFilter.trangthai=this.value;refreshDiscountTrackingTable_()" style="min-width:160px">
+        <option value="">Tất cả trạng thái</option>
+        <option value="chua" ${f.trangthai==='chua'?'selected':''}>Chưa thực hiện</option>
+        <option value="dat" ${f.trangthai==='dat'?'selected':''}>Đã thực hiện — Đạt</option>
+        <option value="chuadat" ${f.trangthai==='chuadat'?'selected':''}>Đã thực hiện — Chưa đạt</option>
+      </select>
+      <button class="btn" onclick="exportDiscountTrackingXlsx()">${ICON.download||''} Xuất Excel</button>
+    </div>
+    <div class="hint" style="margin-bottom:8px">${all.length} kỳ trong tổng số ${(DB.programs||[]).length} mã chiết khấu · ${doneCount} kỳ đã thực hiện · ${all.length-doneCount} kỳ chưa thực hiện${f.chuongtrinh||f.trangthai?` · đang lọc: ${rows.length} kỳ`:''}</div>
+    <div class="table-wrap" style="max-height:60vh;overflow:auto">
+      <table>
+        <thead><tr><th>Chương trình</th><th>Mã chiết khấu</th><th>Từ ngày</th><th>Đến ngày</th><th>Trạng thái</th><th class="num">Số tiền CK</th><th>Cách tính</th></tr></thead>
+        <tbody>${rowsHtml || '<tr><td colspan="7" class="empty">Không có kỳ nào khớp bộ lọc.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+function refreshDiscountTrackingTable_(){
+  const el = document.getElementById('discountTrackingBody');
+  if(el) el.innerHTML = renderDiscountTrackingBody_();
+}
+window.refreshDiscountTrackingTable_ = refreshDiscountTrackingTable_;
+function showDiscountTrackingTable(){
+  openModal(`
+    <h3>Bảng theo dõi chiết khấu theo Chương trình / Mã chiết khấu</h3>
+    <div class="hint" style="margin:-6px 0 10px">Mỗi dòng là 1 kỳ tính chiết khấu (theo đúng "Thời điểm tính CK" đã khai trên mã đó) trong suốt thời gian hiệu lực — cho biết kỳ đó đã được tính & lưu báo cáo hay chưa, và cách tính áp dụng.</div>
+    <div id="discountTrackingBody">${renderDiscountTrackingBody_()}</div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:10px"><button class="btn btn-primary" onclick="closeModal()">Đóng</button></div>
+  `, {wide:true});
+}
+window.showDiscountTrackingTable = showDiscountTrackingTable;
+function exportDiscountTrackingXlsx(){
+  const f = UI._trackingFilter;
+  const all = UI._trackingRowsCache || buildDiscountTrackingData_();
+  const rows = all.filter(r=>{
+    if(f.chuongtrinh && r.progId!==f.chuongtrinh) return false;
+    if(f.trangthai==='chua') return !r.daThucHien;
+    if(f.trangthai==='dat') return r.daThucHien && r.trangThai==='Đạt';
+    if(f.trangthai==='chuadat') return r.daThucHien && r.trangThai==='Chưa đạt';
+    return true;
+  });
+  const out = rows.map(r=>({
+    'Chương trình': r.chuongtrinh, 'Mã chiết khấu': r.maCK,
+    'Từ ngày': r.tu?fmtDate(r.tu):'', 'Đến ngày': r.den?fmtDate(r.den):'',
+    'Trạng thái': r.daThucHien ? ('Đã thực hiện — '+r.trangThai) : 'Chưa thực hiện',
+    'Số tiền CK': r.soTienCK!=null ? r.soTienCK : '',
+    'Cách tính': r.ghiChu || r.cachTinh
+  }));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(out);
+  ws['!cols'] = [{wch:20},{wch:16},{wch:12},{wch:12},{wch:22},{wch:16},{wch:70}];
+  XLSX.utils.book_append_sheet(wb, ws, 'TheoDoiChietKhau');
+  downloadWb(wb, 'BangTheoDoiChietKhau_export.xlsx');
+  toast('Đã xuất Bảng theo dõi chiết khấu','ok');
+}
+window.exportDiscountTrackingXlsx = exportDiscountTrackingXlsx;
 function renderBaoCao(){
   document.getElementById('topbarActions').innerHTML = `
     <button class="btn" onclick="checkDuplicateReports()">${ICON.download||''} 🔍 Kiểm tra chiết khấu trùng</button>
+    <button class="btn" onclick="showDiscountTrackingTable()">${ICON.download||''} 📋 Bảng theo dõi chiết khấu</button>
   `;
   if(!UI._baocaoFilters){
     const now = new Date();
@@ -3406,7 +4959,26 @@ window.runReport = runReport;
 // tháng trước), làm nguồn dữ liệu cho "Tính chiết khấu bổ sung" đối chiếu theo từng tháng lũy kế. =====
 function buildReportSaveRows(){
   if(!UI.reportResult) return null;
-  const { rows, from, to, thoidiem, supplier } = UI.reportResult;
+  const { rows, thoidiem, supplier } = UI.reportResult;
+  let { from, to } = UI.reportResult;
+  // SỬA LỖI (chống trùng báo cáo do lệch khoảng ngày): trước đây "Lưu báo cáo" thủ công ở đây LUÔN
+  // dùng đúng Từ ngày/Đến ngày người dùng đã chọn trên UI tại thời điểm bấm "Tính chiết khấu" — nếu vì
+  // lý do nào đó (gõ tay, dán giá trị, hoặc chọn "Tùy chọn" rồi quên gõ đúng ranh giới) khoảng ngày đó
+  // KHÔNG khớp chính xác với ranh giới kỳ chuẩn (VD 01/07–30/07 thay vì 01/07–31/07), thì khi
+  // "Tự động tính & lưu"/"Tính chiết khấu bổ sung" sau đó tự tính lại đúng CÙNG tháng này bằng ranh
+  // giới chuẩn (luôn là mùng 1 -> ngày cuối tháng, xem autoComputeAndSaveMonthsForLuyKe_), khóa chống
+  // trùng (program_id, tu_ngay, den_ngay) sẽ KHÔNG khớp -> sinh thêm 1 dòng báo cáo trùng lặp cho cùng
+  // 1 tháng thay vì ghi đè đúng 1 dòng duy nhất. Nay: nếu "Thời điểm chiết khấu" là 1 trong 4 kỳ chuẩn
+  // (Tháng/Quý/6 Tháng/Năm), LUÔN tự chuẩn hoá lại Từ ngày/Đến ngày về đúng ranh giới kỳ đó (dùng lại
+  // đúng hàm snapPeriodFromDate() đã có sẵn) ngay trước khi lưu — đảm bảo mọi đường lưu (thủ công hay
+  // tự động) cho cùng 1 kỳ luôn ra đúng 1 cặp tu_ngay/den_ngay giống hệt nhau. Với "Tùy chọn" hoặc
+  // "Theo hiệu lực CTKM" (không có ranh giới kỳ chuẩn để đối chiếu), giữ nguyên khoảng ngày người dùng
+  // đã chọn như trước — đây vốn là lựa chọn có chủ đích của người dùng, không có gì để "chuẩn hoá".
+  const snap = snapPeriodFromDate(from, thoidiem);
+  if(snap && (snap.from !== from || snap.to !== to)){
+    toast(`Đã tự động chuẩn hoá khoảng ngày về đúng ranh giới kỳ: ${fmtDate(snap.from)} → ${fmtDate(snap.to)}`, 'ok');
+    from = snap.from; to = snap.to;
+  }
   const den = to;
   const dDate = new Date(den);
   const thangCK = dDate.getMonth()+1;
@@ -3501,7 +5073,7 @@ function renderBonusFilterCard(){
       <div class="grid grid-3">
         <div class="field" style="margin:0"><label>Từ ngày</label><input type="date" id="bn_from" value="${bf.from}"></div>
         <div class="field" style="margin:0"><label>Đến ngày</label><input type="date" id="bn_to" value="${bf.to}"></div>
-        <div class="field" style="margin:0;display:flex;align-items:flex-end;justify-content:flex-end"><button class="btn btn-primary btn-sm" onclick="runBonusCalc()">${ICON.calc} Tính chiết khấu bổ sung</button></div>
+        <div class="field" style="margin:0;display:flex;align-items:flex-end;justify-content:flex-end"><button class="btn btn-primary btn-sm" id="btnRunBonusCalc" onclick="runBonusCalc()">${ICON.calc} Tính chiết khấu bổ sung</button></div>
       </div>
     </div>
   `;
@@ -3509,6 +5081,107 @@ function renderBonusFilterCard(){
 // THEO GÓP Ý: tự động tính + lưu báo cáo (REPORT_CKTH/CT) LẦN LƯỢT cho từng tháng đã tick chọn ở khung
 // Chiết khấu bổ sung — tránh phải quay lại khung "Tính chiết khấu" ở trên, tự chọn lại Từ/Đến ngày và
 // bấm Lưu thủ công cho từng tháng một. Chỉ tính riêng cho đúng chương trình chính đã liên kết.
+// TỐI ƯU: phần lõi (tính từng tháng bằng computeReport() rồi lưu qua saveReportToSheet()) được tách
+// riêng thành autoComputeAndSaveMonthsForLuyKe_() để dùng chung cho cả 2 nút "Tự động tính & lưu" và
+// "Tính chiết khấu bổ sung" — đảm bảo cả 2 nơi luôn tính theo đúng 1 công thức, không lặp code.
+async function autoComputeAndSaveMonthsForLuyKe_(baseProg, thangList, thoidiem, year, onProgress){
+  let savedCount = 0, skippedCount = 0;
+  for(const m of thangList){
+    if(onProgress) onProgress(m, year);
+    const monthStart = toISO(new Date(year, m-1, 1));
+    const monthEnd = toISO(new Date(year, m, 0));
+    const rows = computeReport(monthStart, monthEnd, '', false, baseProg.id, thoidiem);
+    const progRow = rows.find(r=>r.program && r.program.id===baseProg.id);
+    if(!progRow){ skippedCount++; continue; }
+    const pctHtSl = (progRow.program.sl_max && Number(progRow.program.sl_max)>0) ? (progRow.sl/Number(progRow.program.sl_max)*100) : null;
+    const ckth = [{
+      program_id: baseProg.id, ma_chietkhau: baseProg.ma_chietkhau, nhom_chietkhau: progRow.label,
+      ngay_tinh: monthEnd, thoidiem_chietkhau: thoidiem || baseProg.thoidiem_ck || '',
+      tu_ngay: monthStart, den_ngay: monthEnd, nhacungcap: '',
+      pct_ht_kh_dt: progRow.hoanthanh!=null ? Number(progRow.hoanthanh.toFixed(2)) : '',
+      pct_ht_kh_sl: pctHtSl!=null ? Number(pctHtSl.toFixed(2)) : '',
+      hinh_thuc_chietkhau: progRow.htChietkhau || '',
+      chiet_khau: (progRow.program.tl_ck || progRow.program.dongia_codinh) || '', so_tien_chietkhau: progRow.tienck,
+      thang_chietkhau: m, nam_chietkhau: year,
+      trangthai: progRow.dat ? 'DAT' : 'CHUA_DAT'
+    }];
+    const ckct = (progRow.skuDetails||[]).map(s=>({
+      program_id: baseProg.id, ma_chietkhau: baseProg.ma_chietkhau, nhom_chietkhau: progRow.label,
+      ngay_tinh: monthEnd, thoidiem_chietkhau: thoidiem || baseProg.thoidiem_ck || '',
+      tu_ngay: monthStart, den_ngay: monthEnd, nhacungcap: '',
+      pct_ht_kh_dt: progRow.hoanthanh!=null ? Number(progRow.hoanthanh.toFixed(2)) : '',
+      pct_ht_kh_sl: pctHtSl!=null ? Number(pctHtSl.toFixed(2)) : '',
+      hinh_thuc_chietkhau: progRow.htChietkhau || '',
+      mahang: s.mahang, tenhang: s.tenhang, sanluong: s.sl, doanhso: s.dt,
+      gia_mua_bq: s.giaMuaTB ? Math.round(s.giaMuaTB) : '',
+      gia_congbo_bq: s.giaCongBoTB ? Math.round(s.giaCongBoTB) : '',
+      chiet_khau: s.tienck
+    }));
+    await saveReportToSheet(ckth, ckct);
+    savedCount++;
+  }
+  return { savedCount, skippedCount };
+}
+// ===== DRAFT (NHÁP) TẠM THỜI CHO BƯỚC "TÍNH CHIẾT KHẤU BỔ SUNG" =====
+// THEO YÊU CẦU: trước đây "Tính chiết khấu bổ sung" gọi autoComputeAndSaveMonthsForLuyKe_() — hàm này
+// GHI THẲNG lên Google Sheet (REPORT_CKTH/REPORT_CKCT) mỗi lần bấm, dù người dùng chỉ đang muốn XEM THỬ
+// kết quả chứ chưa chắc muốn lưu gì. Nay tách riêng: bước kiểm tra ĐẠT/CHƯA ĐẠT từng tháng khi tính bổ
+// sung chỉ tính lại rồi lưu vào 1 DRAFT (mảng tạm trong bộ nhớ trình duyệt, KHÔNG gửi lên Sheet), dùng
+// draft đó để đối chiếu — xong việc là XOÁ NGAY (xem cuối runBonusCalc), không để lại dấu vết gì trên
+// Sheet. Báo cáo THÁNG CHÍNH THỨC trên Sheet chỉ thay đổi khi người dùng chủ động bấm nút riêng "Tự
+// động tính & lưu cho các tháng đã chọn" (autoRunAndSaveMonthsForLuyKe, vẫn dùng hàm SAVE thật như cũ)
+// hoặc "Lưu báo cáo bổ sung" (saveBonusReport, lưu khoản CK bổ sung — khác với báo cáo tháng).
+let DRAFT_REPORT_CKTH_ = [];
+async function autoComputeMonthsDraft_(baseProg, thangList, thoidiem, year, onProgress){
+  // Xoá phần draft cũ (nếu có) của đúng chương trình + thời điểm + năm + các tháng sắp tính lại, tránh
+  // lẫn dữ liệu nháp từ lượt tính trước đó (VD người dùng đổi khoảng ngày rồi bấm tính lại).
+  DRAFT_REPORT_CKTH_ = DRAFT_REPORT_CKTH_.filter(r => !(
+    String(r.program_id) === String(baseProg.id) &&
+    String(r.thoidiem_chietkhau || '') === String(thoidiem || '') &&
+    Number(r.nam_chietkhau) === year &&
+    thangList.includes(Number(r.thang_chietkhau))
+  ));
+  let computedCount = 0, skippedCount = 0;
+  for (const m of thangList) {
+    if (onProgress) onProgress(m, year);
+    const monthStart = toISO(new Date(year, m - 1, 1));
+    const monthEnd = toISO(new Date(year, m, 0));
+    const rows = computeReport(monthStart, monthEnd, '', false, baseProg.id, thoidiem);
+    const progRow = rows.find(r => r.program && r.program.id === baseProg.id);
+    if (!progRow) { skippedCount++; continue; }
+    const pctHtSl = (progRow.program.sl_max && Number(progRow.program.sl_max) > 0) ? (progRow.sl / Number(progRow.program.sl_max) * 100) : null;
+    DRAFT_REPORT_CKTH_.push({
+      program_id: baseProg.id, ma_chietkhau: baseProg.ma_chietkhau, nhom_chietkhau: progRow.label,
+      ngay_tinh: monthEnd, thoidiem_chietkhau: thoidiem || baseProg.thoidiem_ck || '',
+      tu_ngay: monthStart, den_ngay: monthEnd, nhacungcap: '',
+      pct_ht_kh_dt: progRow.hoanthanh != null ? Number(progRow.hoanthanh.toFixed(2)) : '',
+      pct_ht_kh_sl: pctHtSl != null ? Number(pctHtSl.toFixed(2)) : '',
+      hinh_thuc_chietkhau: progRow.htChietkhau || '',
+      chiet_khau: (progRow.program.tl_ck || progRow.program.dongia_codinh) || '', so_tien_chietkhau: progRow.tienck,
+      thang_chietkhau: m, nam_chietkhau: year,
+      trangthai: progRow.dat ? 'DAT' : 'CHUA_DAT'
+    });
+    computedCount++;
+  }
+  return { computedCount, skippedCount };
+}
+// Tra cứu báo cáo 1 tháng: ưu tiên DRAFT (vừa tính lại trong phiên hiện tại, luôn mới nhất) trước, nếu
+// tháng đó không có trong draft (VD chưa từng bấm "Tính chiết khấu bổ sung" trong phiên này) thì mới
+// rơi về báo cáo CHÍNH THỨC đã lưu trên Sheet (DB.reportCKTH, VD đã lưu từ trước qua nút "Tự động tính
+// & lưu"). Dùng chung cho computeBonusDiscount() và computeDualConditionBonus() bên dưới.
+function findMonthReport_(programId, thoidiemCk, thang, year){
+  const draftHit = DRAFT_REPORT_CKTH_.find(r =>
+    String(r.program_id || '') === String(programId) &&
+    String(r.thoidiem_chietkhau || '') === String(thoidiemCk || '') &&
+    Number(r.thang_chietkhau) === thang && Number(r.nam_chietkhau) === year
+  );
+  if (draftHit) return draftHit;
+  return (DB.reportCKTH || []).find(r =>
+    String(r.program_id || '') === String(programId) &&
+    String(r.thoidiem_chietkhau || '') === String(thoidiemCk || '') &&
+    Number(r.thang_chietkhau) === thang && Number(r.nam_chietkhau) === year
+  );
+}
 async function autoRunAndSaveMonthsForLuyKe(){
   const luykeId = document.getElementById('bn_luyke').value;
   const thoidiem = document.getElementById('bn_thoidiem').value;
@@ -3524,43 +5197,11 @@ async function autoRunAndSaveMonthsForLuyKe(){
 
   const btn = document.getElementById('btnAutoRunMonths');
   if(btn){ btn.disabled = true; }
-  let savedCount = 0, skippedCount = 0;
   try{
-    for(const m of thangList){
-      if(btn) btn.innerHTML = `Đang xử lý tháng ${m}/${year}...`;
-      const monthStart = toISO(new Date(year, m-1, 1));
-      const monthEnd = toISO(new Date(year, m, 0));
-      const rows = computeReport(monthStart, monthEnd, '', false, baseProg.id, thoidiem);
-      const progRow = rows.find(r=>r.program && r.program.id===baseProg.id);
-      if(!progRow){ skippedCount++; continue; }
-      const dDate = new Date(monthEnd);
-      const pctHtSl = (progRow.program.sl_max && Number(progRow.program.sl_max)>0) ? (progRow.sl/Number(progRow.program.sl_max)*100) : null;
-      const ckth = [{
-        program_id: baseProg.id, ma_chietkhau: baseProg.ma_chietkhau, nhom_chietkhau: progRow.label,
-        ngay_tinh: monthEnd, thoidiem_chietkhau: thoidiem || baseProg.thoidiem_ck || '',
-        tu_ngay: monthStart, den_ngay: monthEnd, nhacungcap: '',
-        pct_ht_kh_dt: progRow.hoanthanh!=null ? Number(progRow.hoanthanh.toFixed(2)) : '',
-        pct_ht_kh_sl: pctHtSl!=null ? Number(pctHtSl.toFixed(2)) : '',
-        hinh_thuc_chietkhau: progRow.htChietkhau || '',
-        chiet_khau: (progRow.program.tl_ck || progRow.program.dongia_codinh) || '', so_tien_chietkhau: progRow.tienck,
-        thang_chietkhau: m, nam_chietkhau: year,
-        trangthai: progRow.dat ? 'DAT' : 'CHUA_DAT'
-      }];
-      const ckct = (progRow.skuDetails||[]).map(s=>({
-        program_id: baseProg.id, ma_chietkhau: baseProg.ma_chietkhau, nhom_chietkhau: progRow.label,
-        ngay_tinh: monthEnd, thoidiem_chietkhau: thoidiem || baseProg.thoidiem_ck || '',
-        tu_ngay: monthStart, den_ngay: monthEnd, nhacungcap: '',
-        pct_ht_kh_dt: progRow.hoanthanh!=null ? Number(progRow.hoanthanh.toFixed(2)) : '',
-        pct_ht_kh_sl: pctHtSl!=null ? Number(pctHtSl.toFixed(2)) : '',
-        hinh_thuc_chietkhau: progRow.htChietkhau || '',
-        mahang: s.mahang, tenhang: s.tenhang, sanluong: s.sl, doanhso: s.dt,
-        gia_mua_bq: s.giaMuaTB ? Math.round(s.giaMuaTB) : '',
-        gia_congbo_bq: s.giaCongBoTB ? Math.round(s.giaCongBoTB) : '',
-        chiet_khau: s.tienck
-      }));
-      await saveReportToSheet(ckth, ckct);
-      savedCount++;
-    }
+    const { savedCount, skippedCount } = await autoComputeAndSaveMonthsForLuyKe_(
+      baseProg, thangList, thoidiem, year,
+      (m,y) => { if(btn) btn.innerHTML = `Đang xử lý tháng ${m}/${y}...`; }
+    );
     toast(`Đã tự động tính & lưu ${savedCount} tháng${skippedCount?` (bỏ qua ${skippedCount} tháng không có dữ liệu mua hàng)`:''}`, 'ok');
   }catch(err){
     toast('Lỗi khi tự động tính & lưu: ' + (err.message||err), 'err');
@@ -3593,12 +5234,7 @@ function computeBonusDiscount(lk, thangList, thoidiemCk, fromDate, toDate){
     const monthEnd = toISO(new Date(year, m, 0));
     const inRange = monthStart <= toDate && monthEnd >= fromDate;
     if(!inRange) return { thang:m, status:'NGOAI_KHOANG', dat:false, note:'Ngoài khoảng Từ ngày - Đến ngày đã chọn' };
-    const rec = (DB.reportCKTH||[]).find(r=>
-      String(r.program_id||'')===String(baseProg.id) &&
-      String(r.thoidiem_chietkhau||'')===String(thoidiemCk||'') &&
-      Number(r.thang_chietkhau)===m &&
-      Number(r.nam_chietkhau)===year
-    );
+    const rec = findMonthReport_(baseProg.id, thoidiemCk, m, year);
     if(!rec) return { thang:m, status:'CHUA_LUU', dat:false, note:'Chưa có báo cáo đã lưu cho tháng này' };
     const dat = norm(rec.trangthai)==='DAT';
     return { thang:m, status: dat?'DAT':'CHUA_DAT', dat, note: dat?'Đạt':'Chưa đạt bậc', record:rec };
@@ -3629,7 +5265,12 @@ function computeBonusDiscount(lk, thangList, thoidiemCk, fromDate, toDate){
   let skuDetails = [], tienck = 0;
   const rate = effectiveRatePct/100;
   if(finalDat && rate>0){
-    skuDetails = (ownChk.matchingSkus||[]).map(s=>({
+    let baseSkus = ownChk.matchingSkus || [];
+    if(lk.ma_doanhthu_tinhck){
+      const tinhCkDims = doanhThuDims_(lk.ma_doanhthu_tinhck);
+      if(tinhCkDims) baseSkus = baseSkus.filter(s=>dimsMatch(s.dims, tinhCkDims));
+    }
+    skuDetails = baseSkus.map(s=>({
       mahang: s.mahang, tenhang: s.tenhang, sl: s.sl, dt: s.dt, tienck: s.dt*rate
     })).sort((a,b)=>b.tienck-a.tienck);
     tienck = skuDetails.reduce((a,x)=>a+x.tienck,0);
@@ -3649,12 +5290,7 @@ function computeDualConditionBonus(lk, baseProg, thangList, thoidiemCk, fromDate
     const monthEnd = toISO(new Date(year, m, 0));
     const inRange = monthStart <= toDate && monthEnd >= fromDate;
     if(!inRange) return { thang:m, status:'NGOAI_KHOANG', dat:false, pct:null, note:'Ngoài khoảng Từ ngày - Đến ngày đã chọn' };
-    const rec = (DB.reportCKTH||[]).find(r=>
-      String(r.program_id||'')===String(baseProg.id) &&
-      String(r.thoidiem_chietkhau||'')===String(thoidiemCk||'') &&
-      Number(r.thang_chietkhau)===m &&
-      Number(r.nam_chietkhau)===year
-    );
+    const rec = findMonthReport_(baseProg.id, thoidiemCk, m, year);
     if(!rec) return { thang:m, status:'CHUA_LUU', dat:false, pct:null, note:'Chưa có báo cáo đã lưu cho tháng này' };
     const pct = rec.pct_ht_kh_dt==null || rec.pct_ht_kh_dt==='' ? null : Number(rec.pct_ht_kh_dt);
     const minReq = Number(lk.dk1_pct_thang_min||90);
@@ -3684,7 +5320,12 @@ function computeDualConditionBonus(lk, baseProg, thangList, thoidiemCk, fromDate
   let skuDetails = [], tienck = 0;
   const rate = effectiveRatePct/100;
   if(finalDat && rate>0){
-    skuDetails = (ownChk.matchingSkus||[]).map(s=>({
+    let baseSkus = ownChk.matchingSkus || [];
+    if(lk.ma_doanhthu_tinhck){
+      const tinhCkDims = doanhThuDims_(lk.ma_doanhthu_tinhck);
+      if(tinhCkDims) baseSkus = baseSkus.filter(s=>dimsMatch(s.dims, tinhCkDims));
+    }
+    skuDetails = baseSkus.map(s=>({
       mahang: s.mahang, tenhang: s.tenhang, sl: s.sl, dt: s.dt, tienck: s.dt*rate
     })).sort((a,b)=>b.tienck-a.tienck);
     tienck = skuDetails.reduce((a,x)=>a+x.tienck,0);
@@ -3692,7 +5333,7 @@ function computeDualConditionBonus(lk, baseProg, thangList, thoidiemCk, fromDate
   return { ok:true, kieu_tinh:'dual_condition', finalDat, dk1Met, dk2Met, effectiveRatePct, monthChecks, ownChk, baseProg, lk, rate, tienck, skuDetails };
 }
 
-function runBonusCalc(){
+async function runBonusCalc(){
   const luyke = document.getElementById('bn_luyke').value;
   const thoidiem = document.getElementById('bn_thoidiem').value;
   const from = document.getElementById('bn_from').value;
@@ -3702,10 +5343,34 @@ function runBonusCalc(){
   if(!lk){ toast('Vui lòng chọn chương trình chiết khấu lũy kế','err'); return; }
   const thangCsv = lk.thang_luyke; // lấy thẳng từ chương trình lũy kế, không hỏi lại
   if(!thangCsv){ toast('Chương trình lũy kế này chưa cấu hình tháng — vào sửa lại ở tab "Chiết khấu lũy kế"','err'); return; }
+  const baseProg = DB.programs.find(p=>p.id===lk.ma_ck_chinh);
+  if(!baseProg){ toast('Không tìm thấy chương trình chiết khấu chính đã liên kết','err'); return; }
   UI._bonusFilters = { luyke, thang: thangCsv, thoidiem, from, to };
   const thangList = thangCsv.split(',').map(Number).filter(Boolean);
-  UI.bonusResult = { from, to, thoidiem, ...computeBonusDiscount(lk, thangList, thoidiem, from, to) };
-  renderReport();
+  const year = to ? new Date(to).getFullYear() : new Date().getFullYear();
+
+  // SỬA THEO YÊU CẦU: "Mã chiết khấu lũy kế" chọn ở khung này chỉ phục vụ đúng việc tính chiết khấu bổ
+  // sung, không dùng cho mục đích nào khác — nên trước khi đối chiếu ĐẠT/CHƯA ĐẠT từng tháng, LUÔN tự
+  // tính lại bằng đúng dữ liệu Sổ mua hàng hiện tại. Khác với trước đây: giờ chỉ tính vào DRAFT (nháp)
+  // trong bộ nhớ trình duyệt — KHÔNG ghi lên Sheet — nên bấm nút này để xem thử KHÔNG làm thay đổi báo
+  // cáo tháng chính thức đã lưu. Draft tự động bị xoá ngay sau khi tính xong (xem finally bên dưới).
+  const btn = document.getElementById('btnRunBonusCalc');
+  if(btn){ btn.disabled = true; }
+  try{
+    await autoComputeMonthsDraft_(
+      baseProg, thangList, thoidiem, year,
+      (m,y) => { if(btn) btn.innerHTML = `Đang tính lại tháng ${m}/${y}...`; }
+    );
+    UI.bonusResult = { from, to, thoidiem, ...computeBonusDiscount(lk, thangList, thoidiem, from, to) };
+    renderReport();
+  }catch(err){
+    toast('Lỗi khi tự động tính lại các tháng điều kiện: ' + (err.message||err), 'err');
+  }finally{
+    // THEO YÊU CẦU: tính xong (dù thành công hay lỗi) đều XOÁ NGAY draft — không để sót lại gây hiểu
+    // nhầm dữ liệu cũ ở lượt tính tiếp theo hoặc ở bất kỳ chỗ nào khác trong app.
+    DRAFT_REPORT_CKTH_ = [];
+    if(btn){ btn.disabled = false; btn.innerHTML = `${ICON.calc} Tính chiết khấu bổ sung`; }
+  }
 }
 window.runBonusCalc = runBonusCalc;
 
@@ -3730,7 +5395,7 @@ function renderBonusResult(){
     <div class="grid grid-4">
       <div class="kpi"><div class="lbl">Chương trình chính</div><div class="val mono" style="font-size:15px">${esc(r.baseProg.ma_chietkhau)}</div><div class="sub">${fmtDate(r.from)} → ${fmtDate(r.to)}</div></div>
       <div class="kpi"><div class="lbl">ĐK1: mỗi tháng ≥ ${esc(r.lk.dk1_pct_thang_min)}%</div><div class="val" style="font-size:16px">${r.dk1Met?`✓ Đạt (+${fmtPct(r.lk.dk1_rate)})`:'✗ Chưa đạt'}</div><div class="sub">${r.monthChecks.length} tháng yêu cầu</div></div>
-      <div class="kpi"><div class="lbl">ĐK2: cả kỳ ≥ ${esc(r.lk.dk2_pct_ky_min)}%</div><div class="val" style="font-size:16px">${r.dk2Met?`✓ Đạt (+${fmtPct(r.lk.dk2_rate)})`:'✗ Chưa đạt'}</div><div class="sub">${r.ownChk.hoanthanh!=null?fmtPct(r.ownChk.hoanthanh)+' hoàn thành':''}</div></div>
+      <div class="kpi"><div class="lbl">ĐK2: cả kỳ ≥ ${esc(r.lk.dk2_pct_ky_min)}%</div><div class="val" style="font-size:16px">${r.dk2Met?`✓ Đạt (+${fmtPct(r.lk.dk2_rate)})`:'✗ Chưa đạt'}</div><div class="sub">${r.ownChk.hoanthanh!=null?fmtPct(r.ownChk.hoanthanh)+' hoàn thành':''}${dtkhSourceHint_(r.ownChk.dtkhSource)}</div></div>
       <div class="kpi accent-gold"><div class="lbl">Tổng chiết khấu bổ sung</div><div class="val mono" style="font-size:20px">${fmtVND(r.tienck)}</div><div class="sub">${fmtPct(r.effectiveRatePct)} · TT: ${esc(ttCkLabel(r.lk.tt_ck_bosung))}</div></div>
     </div>
   ` : `
@@ -3856,6 +5521,18 @@ function renderSkuAggregateTable(rows){
   `;
 }
 
+// THEO YÊU CẦU: hiển thị rõ nguồn Doanh thu kế hoạch đang dùng để tính %Hoàn thành KH ngay dưới con số,
+// tránh người xem báo cáo hiểu nhầm hoặc phải tự dò trong tab Kế hoạch xem số liệu lấy từ đâu.
+function dtkhSourceHint_(src){
+  if(!src) return '';
+  if(src.loai==='kehoach'){
+    return `<div class="hint" style="font-size:10px;white-space:nowrap">Theo KH ${esc(src.ma_kehoach||'?')}${src.ky?(' · kỳ '+esc(src.ky)):''}</div>`;
+  }
+  if(src.loai==='chuongtrinh'){
+    return `<div class="hint" style="font-size:10px;white-space:nowrap;color:var(--amber-dark,#b45309)">Theo DT KH khai trên mã CK <span title="Không tìm thấy Kế hoạch nào ở tab Danh mục kế hoạch áp dụng đúng Mã doanh thu và khớp kỳ báo cáo này — đang dùng tạm số Doanh thu kế hoạch khai trực tiếp trên Mã chiết khấu/bậc điều kiện.">ⓘ</span></div>`;
+  }
+  return '';
+}
 function renderReportResult(){
   const { rows, from, to, supplier, program } = UI.reportResult;
   const totalSL = rows.reduce((s,r)=>s+r.sl,0);
@@ -3976,7 +5653,7 @@ function renderReportResult(){
       <td class="num mono">${r.giaCongBoTB ? fmtVND(r.giaCongBoTB) : '—'}</td>
       <td class="num mono" style="color:var(--emerald-dark);font-weight:600">${fmtVND(r.tienck)}</td>
       <td class="num mono">${r.pctTheoGiaMua!=null ? fmtPct(r.pctTheoGiaMua) : '—'}</td>
-      <td class="num mono">${r.dtkh ? fmtPct(r.hoanthanh) : '—'}</td>
+      <td class="num mono">${r.dtkh ? fmtPct(r.hoanthanh) : '—'}${dtkhSourceHint_(r.dtkhSource)}</td>
       <td class="num mono">${khMin}</td>
       <td class="num mono">${khMax}</td>
     </tr>${detailHtml}`;
@@ -4176,7 +5853,9 @@ async function handleCatalogFile(file){
       counts.mhck=c;
     }
     ensureNO();
-    await saveCatalog();
+    // Hàm này import đồng thời cả 6 danh mục nhỏ VÀ bảng MHCK từ cùng 1 file Excel -> cần lưu cả 2
+    // phần (chạy song song để không chờ tuần tự không cần thiết).
+    await Promise.all([saveCatalogDims(), saveMhck()]);
     // SỬA LỖI: trước đây nếu 1 mục nào đó import được 0 dòng (do không tìm thấy tab/cột phù hợp
     // trong file Excel), người dùng không hề biết -> tưởng đã nạp xong nhưng thực ra thiếu dữ liệu.
     // Nay liệt kê rõ mục nào có dữ liệu, mục nào = 0 để người dùng biết ngay và kiểm tra lại file.
@@ -4391,7 +6070,7 @@ async function handlePurchasesFile(file){
     }
 
     await savePurchases();
-    if(autoAdded.length) await saveCatalog();
+    if(autoAdded.length) await saveMhck();
     toast(`Đã tải ${added} dòng mới lên Sheet${autoAdded.length? ` · Tự động thêm ${autoAdded.length} mã hàng mới vào Danh mục MHCK (cần rà soát lại nhóm)` : ''}`, 'ok');
     renderPurchases();
   }catch(err){ toast('Lỗi xử lý tệp mua hàng: ' + err.message, 'err'); }
@@ -4475,6 +6154,7 @@ function exportReportXlsx(){
     'Số tiền chiết khấu': r.tienck,
     '% CK theo giá mua': r.pctTheoGiaMua!=null ? Number(r.pctTheoGiaMua.toFixed(2)) : '',
     'Doanh thu kế hoạch': r.dtkh || '', '% Hoàn thành KH': r.hoanthanh ? r.hoanthanh.toFixed(1) : '',
+    'Nguồn Doanh thu KH': !r.dtkhSource ? '' : (r.dtkhSource.loai==='kehoach' ? `Kế hoạch ${r.dtkhSource.ma_kehoach}${r.dtkhSource.ky?(' - kỳ '+r.dtkhSource.ky):''}` : (r.dtkhSource.loai==='chuongtrinh' ? 'Khai trực tiếp trên Mã chiết khấu (chưa có Kế hoạch áp dụng)' : 'Không có Doanh thu kế hoạch nào')),
     '%KH Min': r.program ? (r.program.pct_kh_min ?? '') : '',
     '%KH Max': r.program ? (r.program.pct_kh_max ?? '') : ''
   }));
