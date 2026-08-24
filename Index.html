@@ -1227,7 +1227,8 @@ const ICON = {
   price:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41L13 21l-9-9V4h8l8.59 8.59a2 2 0 010 2.82z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>',
   scale:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M7 21h10"/><path d="M5 7l-3 6a3 3 0 006 0l-3-6zM19 7l-3 6a3 3 0 006 0l-3-6z"/><path d="M5 7h14"/></svg>',
   layers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg>',
-  plan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18"/><path d="M8 14.5l2.5 2.5L16 12"/></svg>'
+  plan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18"/><path d="M8 14.5l2.5 2.5L16 12"/></svg>',
+  copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
 };
 
 function renderShell(){
@@ -2369,6 +2370,7 @@ function renderChuongTrinh(){
       <td style="width:100px"><div class="rowline">
         <span class="small-x" onclick="openChuongTrinhDetail('${ct.id}')" title="Xem chi tiết & tổng hợp chiết khấu">${ICON.report||'📊'}</span>
         <span class="small-x" onclick="openChuongTrinhForm(${i})">${ICON.edit}</span>
+        <span class="small-x" onclick="copyChuongTrinhRow(${i})" title="Sao chép để tạo kỳ mới">${ICON.copy}</span>
         <span class="small-x" onclick="deleteChuongTrinhRow(${i})">${ICON.trash}</span>
       </div></td>
     </tr>`;
@@ -2384,10 +2386,11 @@ function renderChuongTrinh(){
   `;
 }
 window.renderChuongTrinh = renderChuongTrinh;
-function openChuongTrinhForm(idx){
-  const row = idx!=null ? DB.chuongtrinh[idx] : { ma_chuongtrinh:'', noidung:'', tu_ngay:'', den_ngay:'' };
+function openChuongTrinhForm(idx, prefill){
+  const row = idx!=null ? DB.chuongtrinh[idx] : (prefill || { ma_chuongtrinh:'', noidung:'', tu_ngay:'', den_ngay:'' });
   openModal(`
-    <h3>${idx!=null?'Sửa':'Thêm'} chương trình chiết khấu</h3>
+    <h3>${idx!=null?'Sửa':(prefill?'Sao chép':'Thêm')} chương trình chiết khấu</h3>
+    ${prefill && idx==null ? `<div class="hint" style="margin:-6px 0 12px">📋 Đã sao chép nội dung từ chương trình cũ — vui lòng đặt lại <b>Từ ngày/Đến ngày</b> cho kỳ mới rồi lưu.</div>` : ''}
     <div class="field"><label>Mã chương trình</label><input type="text" id="ct_ma" value="${esc(row.ma_chuongtrinh)}" placeholder="VD: CSMN_2026_Q1"></div>
     <div class="field"><label>Nội dung chương trình</label><textarea id="ct_noidung" rows="3" placeholder="Mô tả ngắn gọn nội dung/chính sách của chương trình">${esc(row.noidung||'')}</textarea></div>
     <div class="grid grid-2">
@@ -2401,6 +2404,15 @@ function openChuongTrinhForm(idx){
   `);
 }
 window.openChuongTrinhForm = openChuongTrinhForm;
+// THEO YÊU CẦU: sao chép 1 chương trình đã có để dùng cho kỳ khác (VD Quý sau, Năm sau) — giữ nguyên
+// Mã và Nội dung, CHỦ ĐỘNG xoá Từ ngày/Đến ngày (đây chính là "kỳ" của chương trình) để bắt buộc người
+// dùng phải đặt lại đúng khoảng ngày cho kỳ mới trước khi lưu, tránh vô tình lưu trùng kỳ với bản gốc.
+function copyChuongTrinhRow(idx){
+  const src = DB.chuongtrinh[idx];
+  if(!src) return;
+  openChuongTrinhForm(null, { ma_chuongtrinh: src.ma_chuongtrinh, noidung: src.noidung||'', tu_ngay:'', den_ngay:'' });
+}
+window.copyChuongTrinhRow = copyChuongTrinhRow;
 async function saveChuongTrinhForm(idx){
   const ma_chuongtrinh = document.getElementById('ct_ma').value.trim();
   const tu_ngay = document.getElementById('ct_tu').value;
@@ -2777,6 +2789,7 @@ function renderKeHoach(){
       <td style="width:110px"><div class="rowline">
         <span class="small-x" onclick="openKeHoachChiTietManager('${k.id}')" title="Chi tiết kế hoạch theo kỳ (Tháng/Quý/6 Tháng/Năm)">${ICON.layers||'📶'}${soKy?` ${soKy}`:''}</span>
         <span class="small-x" onclick="openKeHoachForm(${i})">${ICON.edit}</span>
+        <span class="small-x" onclick="copyKeHoachRow(${i})" title="Sao chép để tạo kỳ mới">${ICON.copy}</span>
         <span class="small-x" onclick="deleteKeHoachRow(${i})">${ICON.trash}</span>
       </div></td>
     </tr>`;
@@ -2798,10 +2811,11 @@ function renderKeHoach(){
   document.getElementById('btnExportKeHoach').onclick = exportKeHoachXlsx;
 }
 window.renderKeHoach = renderKeHoach;
-function openKeHoachForm(idx){
-  const row = idx!=null ? DB.kehoach[idx] : { ma_kehoach:'', ngaylap: todayISO(), hieuluctu:'', hieulucden:'', dt_kehoach:'', sl_kehoach:'', ma_doanhthu:'ALL' };
+function openKeHoachForm(idx, prefill){
+  const row = idx!=null ? DB.kehoach[idx] : (prefill || { ma_kehoach:'', ngaylap: todayISO(), hieuluctu:'', hieulucden:'', dt_kehoach:'', sl_kehoach:'', ma_doanhthu:'ALL' });
   openModal(`
-    <h3>${idx!=null?'Sửa':'Thêm'} kế hoạch doanh thu</h3>
+    <h3>${idx!=null?'Sửa':(prefill?'Sao chép':'Thêm')} kế hoạch doanh thu</h3>
+    ${prefill && idx==null ? `<div class="hint" style="margin:-6px 0 12px">📋 Đã sao chép nội dung từ kế hoạch cũ (Mã kế hoạch sẽ tự sinh mới) — vui lòng đặt lại <b>Hiệu lực từ/đến ngày</b> cho kỳ mới rồi lưu. Lưu ý: <b>Chi tiết kế hoạch theo từng kỳ con</b> (nếu có) KHÔNG được sao chép, cần khai lại riêng.</div>` : ''}
     <div class="field"><label>Mã kế hoạch</label><input type="text" id="kh_ma" value="${esc(row.ma_kehoach)}" ${idx!=null?'disabled':''} placeholder="Tự sinh khi lưu nếu để trống (yyyymmdd.001)"></div>
     <div class="grid grid-2">
       <div class="field"><label>Ngày lập kế hoạch</label><input type="date" id="kh_ngaylap" value="${esc(row.ngaylap)}"></div>
@@ -2824,6 +2838,19 @@ function openKeHoachForm(idx){
   `);
 }
 window.openKeHoachForm = openKeHoachForm;
+// THEO YÊU CẦU: sao chép 1 kế hoạch để dùng cho kỳ khác — giữ nguyên Doanh thu/Sản lượng kế hoạch và Mã
+// doanh thu áp dụng, CHỦ ĐỘNG xoá Mã kế hoạch (để tự sinh mã mới khi lưu, tránh trùng mã) và Hiệu lực
+// từ/đến ngày (thuộc về kỳ cũ) — buộc người dùng đặt lại đúng khoảng ngày cho kỳ mới trước khi lưu.
+// LƯU Ý: Chi tiết kế hoạch theo từng kỳ con (DB.kehoachChiTiet, nếu có khai) KHÔNG được sao chép theo —
+// đã ghi rõ trong hint ở form để người dùng biết cần khai lại riêng, tránh hiểu nhầm là đã sao chép đủ.
+function copyKeHoachRow(idx){
+  const src = DB.kehoach[idx];
+  if(!src) return;
+  const clone = Object.assign({}, src, { ma_kehoach:'', hieuluctu:'', hieulucden:'', ngaylap: todayISO() });
+  delete clone.id;
+  openKeHoachForm(null, clone);
+}
+window.copyKeHoachRow = copyKeHoachRow;
 async function saveKeHoachForm(idx){
   const ngaylap = document.getElementById('kh_ngaylap').value;
   const hieuluctu = document.getElementById('kh_hieuluctu').value;
@@ -3110,6 +3137,7 @@ function renderPrograms(){
       <td style="width:90px"><div class="rowline">
         <span class="small-x" onclick="openDieuKienManager('${p.id}')" title="Quản lý các bậc điều kiện (Tầng 3)">${ICON.layers||'📶'}</span>
         <span class="small-x" onclick="openProgramForm(${i})" title="${p.updated_by?`Sửa lần cuối bởi ${esc(p.updated_by)} lúc ${p.updated_at?new Date(p.updated_at).toLocaleString('vi-VN'):''}`:'Chưa có ghi vết chỉnh sửa'}">${ICON.edit}</span>
+        <span class="small-x" onclick="copyProgramRow(${i})" title="Sao chép để tạo kỳ mới">${ICON.copy}</span>
         <span class="small-x" onclick="deleteProgram(${i})">${ICON.trash}</span>
       </div></td>
     </tr>`;
@@ -3173,18 +3201,19 @@ function doanhThuSelectorsForProgram_(row){
     <div class="section-note">VD mở rộng: Mã doanh thu điều kiện = "Toàn bộ đơn hàng" (xét đạt SL/DT chung), nhưng Mã doanh thu tính chiết khấu = riêng "Nhóm lốp TBR" (chỉ nhân % chiết khấu trên đúng doanh thu nhóm này).</div>
   `;
 }
-function openProgramForm(idx){
-  const row = idx!=null ? DB.programs[idx] : {
+function openProgramForm(idx, prefill){
+  const row = idx!=null ? DB.programs[idx] : (prefill || {
     ngaytao: todayISO(), hieuluctu:'', hieulucden:'', chuongtrinh_id:'',
     dim_thuonghieu:'NO',dim_nhomkh:'NO',dim_loaisp:'NO',dim_dactinh:'NO',dim_congdung:'NO',dim_quycach:'NO',
     ma_doanhthu:'', ma_doanhthu_tinhck:'',
     sl_min:0, sl_max:10000, dt_min:0, dt_max:70000000000, thoidiem_ck:'Quý', ht_chietkhau:'PERCENT_GIAMUA', tt_ck:'GIAM_HOADON',
     dt_kehoach:'', tl_ck:'', dongia_codinh:'', pct_kh_min:0, pct_kh_max:100, dieukien_sldt:'AND', ghichu:''
-  };
+  });
   const ctOptions = DB.chuongtrinh.map(ct=>`<option value="${esc(ct.id)}" ${row.chuongtrinh_id===ct.id?'selected':''}>${esc(ct.ma_chuongtrinh)} (${fmtDate(ct.tu_ngay)}→${fmtDate(ct.den_ngay)})</option>`).join('');
   const linked = !!row.chuongtrinh_id;
   openModal(`
-    <h3>${idx!=null?'Sửa':'Thêm'} mã chiết khấu</h3>
+    <h3>${idx!=null?'Sửa':(prefill?'Sao chép':'Thêm')} mã chiết khấu</h3>
+    ${prefill && idx==null ? `<div class="hint" style="margin:-6px 0 12px">📋 Đã sao chép nội dung từ mã chiết khấu cũ — vui lòng chọn lại <b>Chương trình (Tầng 1)</b> hoặc đặt lại <b>Hiệu lực từ ngày/đến ngày</b> cho kỳ mới rồi lưu.</div>` : ''}
     <div class="field"><label>Thuộc chương trình (Tầng 1)</label>
       <select id="f_chuongtrinh_id" onchange="onProgramChuongTrinhChange()">
         <option value="">— Không liên kết (tự nhập hiệu lực riêng) —</option>
@@ -3241,6 +3270,19 @@ function openProgramForm(idx){
   `);
 }
 window.openProgramForm = openProgramForm;
+// THEO YÊU CẦU: sao chép 1 mã chiết khấu để dùng cho kỳ khác — giữ nguyên toàn bộ cấu hình (bậc SL/DT,
+// hình thức chiết khấu, tỷ lệ, thời điểm tính CK, Mã doanh thu...), CHỦ ĐỘNG xoá liên kết Chương trình
+// (Tầng 1) và Hiệu lực từ/đến ngày — đây là phần THUỘC VỀ KỲ CŨ, giữ nguyên sẽ dễ nhầm hoặc vô tình lưu
+// trùng kỳ với bản gốc. Người dùng chỉ cần chọn lại đúng Chương trình của kỳ mới (hoặc tự đặt Hiệu lực
+// riêng) rồi lưu, không phải nhập lại từ đầu các cấu hình phức tạp còn lại.
+function copyProgramRow(idx){
+  const src = DB.programs[idx];
+  if(!src) return;
+  const clone = Object.assign({}, src, { chuongtrinh_id:'', hieuluctu:'', hieulucden:'', ngaytao: todayISO() });
+  delete clone.id; delete clone.created_by; delete clone.updated_by; delete clone.updated_at;
+  openProgramForm(null, clone);
+}
+window.copyProgramRow = copyProgramRow;
 window.onProgramChuongTrinhChange = function(){
   const ctId = document.getElementById('f_chuongtrinh_id').value;
   const tu = document.getElementById('f_hieuluctu'), den = document.getElementById('f_hieulucden');
@@ -3542,6 +3584,7 @@ function renderLuyKe(){
       <td>${fmtDate(lk.hieuluctu)} → ${fmtDate(lk.hieulucden)}</td>
       <td style="width:70px"><div class="rowline">
         <span class="small-x" onclick="openLuyKeForm(${i})">${ICON.edit}</span>
+        <span class="small-x" onclick="copyLuyKeRow(${i})" title="Sao chép để tạo kỳ mới">${ICON.copy}</span>
         <span class="small-x" onclick="deleteLuyKeRow(${i})">${ICON.trash}</span>
       </div></td>
     </tr>`;
@@ -3559,8 +3602,8 @@ function renderLuyKe(){
   `;
   bindProgramsSubTabs_();
 }
-function openLuyKeForm(idx){
-  const row = idx!=null ? DB.programsLuyKe[idx] : {
+function openLuyKeForm(idx, prefill){
+  const row = idx!=null ? DB.programsLuyKe[idx] : (prefill || {
     ma_ck_chinh:'', sl_min:0, sl_max:10000, dt_min:0, dt_max:70000000000,
     dt_kehoach:20000000000, pct_kh_min:0, pct_kh_max:100,
     thang_luyke:'1,2,3', thoidiem_ck:'Tháng', ck_bosung:'', tt_ck_bosung:'GIAM_HOADON',
@@ -3568,11 +3611,12 @@ function openLuyKeForm(idx){
     kieu_tinh:'all_or_reduced', ck_reduced_pct:100,
     dk1_pct_thang_min:90, dk1_rate:0.5, dk2_pct_ky_min:110, dk2_rate:0.5,
     ma_doanhthu_tinhck:''
-  };
+  });
   const chinhOptions = DB.programs.map(p=>`<option value="${esc(p.id)}" ${row.ma_ck_chinh===p.id?'selected':''}>${esc(p.ma_chietkhau)} (${fmtDate(p.hieuluctu)}→${fmtDate(p.hieulucden)})</option>`).join('');
   const kt = row.kieu_tinh || 'all_or_reduced';
   openModal(`
-    <h3>${idx!=null?'Sửa':'Thêm'} chương trình chiết khấu lũy kế</h3>
+    <h3>${idx!=null?'Sửa':(prefill?'Sao chép':'Thêm')} chương trình chiết khấu lũy kế</h3>
+    ${prefill && idx==null ? `<div class="hint" style="margin:-6px 0 12px">📋 Đã sao chép nội dung từ chương trình lũy kế cũ — vui lòng chọn lại <b>Mã chiết khấu chính</b> và đặt lại <b>Hiệu lực từ/đến ngày</b> cho kỳ mới rồi lưu.</div>` : ''}
     <div class="field"><label>Mã chiết khấu chính</label>
       <select id="lk_ma_ck_chinh"><option value="">— Chọn chương trình chính —</option>${chinhOptions}</select>
     </div>
@@ -3641,6 +3685,18 @@ function openLuyKeForm(idx){
   `);
 }
 window.openLuyKeForm = openLuyKeForm;
+// THEO YÊU CẦU: sao chép 1 chương trình lũy kế để dùng cho kỳ khác — giữ nguyên cấu hình (bậc SL/DT
+// riêng, kiểu tính, tháng lũy kế, tỷ lệ CK bổ sung...), CHỦ ĐỘNG xoá liên kết "Mã chiết khấu chính" và
+// Hiệu lực từ/đến ngày (thuộc về kỳ cũ) — vì kỳ mới thường gắn với 1 Mã chiết khấu chính KHÁC (bản sao
+// của kỳ mới), giữ nguyên liên kết cũ dễ tính nhầm dữ liệu của kỳ trước.
+function copyLuyKeRow(idx){
+  const src = DB.programsLuyKe[idx];
+  if(!src) return;
+  const clone = Object.assign({}, src, { ma_ck_chinh:'', hieuluctu:'', hieulucden:'' });
+  delete clone.id;
+  openLuyKeForm(null, clone);
+}
+window.copyLuyKeRow = copyLuyKeRow;
 window.toggleLuyKeKieuTinh = function(v){
   document.getElementById('lk_group_allreduced').style.display = v==='all_or_reduced' ? 'block' : 'none';
   document.getElementById('lk_group_dual').style.display = v==='dual_condition' ? 'block' : 'none';
