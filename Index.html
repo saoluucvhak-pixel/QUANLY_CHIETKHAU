@@ -385,6 +385,16 @@ function toISO(d){
   return `${y}-${m}-${day}`;
 }
 function todayISO(){ return toISO(new Date()); }
+// SỬA LỖI: nhiều nơi trong app cần lấy riêng THÁNG/NĂM từ 1 chuỗi ngày "yyyy-mm-dd" (do toISO() sinh ra
+// hoặc lấy thẳng từ <input type="date">) bằng cách new Date(chuoi) rồi getMonth()/getFullYear(). Chuỗi
+// "yyyy-mm-dd" (không kèm giờ) được trình duyệt hiểu theo chuẩn ISO 8601 là mốc UTC 00:00 — ở múi giờ
+// LÙI sau UTC (VD khách mở app từ múi giờ Mỹ), getMonth()/getFullYear() (tính theo giờ ĐỊA PHƯƠNG) ngay
+// sau đó có thể lùi lại đúng 1 ngày, làm sai lệch tháng/năm ghi vào báo cáo mỗi khi ngày rơi đúng ngày
+// đầu tháng/đầu năm (VD "2026-02-01" -> hiểu nhầm thành tháng 1). Vì các chuỗi này LUÔN đúng định dạng
+// "yyyy-mm-dd", lấy tháng/năm bằng cách cắt chuỗi trực tiếp để hoàn toàn không phụ thuộc múi giờ trình
+// duyệt của người dùng.
+function yearOfISO_(s){ return Number(String(s||'').slice(0,4)); }
+function monthOfISO_(s){ return Number(String(s||'').slice(5,7)); }
 
 /* ---------------------------- ô nhập số nguyên có định dạng phân cách nghìn ---------------------------- */
 // Dùng cho các trường: Sản lượng Min/Max, Doanh thu Min/Max, Số tiền CK cố định, Doanh thu kế hoạch...
@@ -4470,9 +4480,28 @@ function stripSeqSuffix(code){
 // khóa, 2 chương trình trùng mã sẽ ghi đè/cộng dồn sai doanh số cho nhau). Nay LUÔN ghép thêm số thứ tự
 // 3 chữ số (_001, _002...) theo thứ tự tạo trước - sau trong nhóm cùng tổ hợp dims.
 function makeUniqueMaChietkhau(baseCode, excludeId){
+  // SỬA LỖI: trước đây dùng "số lượng chương trình cùng tổ hợp dims + 1" làm số thứ tự — nếu 1 chương
+  // trình ở giữa (VD X_002 trong nhóm X_001/X_002/X_003) bị XÓA, số lượng còn lại giảm xuống 2, khiến
+  // chương trình MỚI/SỬA tiếp theo lại được cấp lại đúng "X_003" — TRÙNG với mã của chương trình X_003
+  // đang tồn tại. 2 chương trình khác nhau cùng chung 1 ma_chietkhau khiến REPORT_CKTH/REPORT_CKCT gộp
+  // nhầm doanh số của 2 chương trình vào chung 1 dòng (groupCKCTByMaCK) và tra sai cờ khong_gop_tong khi
+  // tính Tổng CKTM (isExcludedFromTotal_). Nay lấy SỐ THỨ TỰ LỚN NHẤT đang tồn tại trong nhóm rồi +1 (thay
+  // vì đếm số lượng còn lại), đồng thời rà thêm vòng lặp phòng hờ để tuyệt đối không trùng với BẤT KỲ
+  // ma_chietkhau nào khác đang có.
   const siblings = DB.programs.filter(p => p.id!==excludeId && stripSeqSuffix(p.ma_chietkhau)===baseCode);
-  const n = siblings.length + 1;
-  return baseCode + '_' + String(n).padStart(3,'0');
+  let maxN = 0;
+  siblings.forEach(p => {
+    const m = String(p.ma_chietkhau||'').match(/_(\d{3})$/);
+    if(m) maxN = Math.max(maxN, parseInt(m[1], 10));
+  });
+  const existingCodes = new Set(DB.programs.filter(p => p.id!==excludeId).map(p => p.ma_chietkhau));
+  let n = maxN + 1;
+  let code = baseCode + '_' + String(n).padStart(3,'0');
+  while(existingCodes.has(code)){
+    n++;
+    code = baseCode + '_' + String(n).padStart(3,'0');
+  }
+  return code;
 }
 // THEO GÓP Ý: kiểm tra 2 chương trình có TRÙNG PHẠM VI kích thước hay không (dùng khi cảnh báo chồng
 // chéo lúc tạo/sửa chương trình) — coi "NO"/rỗng là áp dụng cho tất cả (giao với mọi giá trị khác),
@@ -5391,9 +5420,8 @@ function buildDedupPlan_(){
     return !keep || (r.tu_ngay+'~'+r.den_ngay)===keep;
   });
   const ckctAfterRange = ckct.filter(r=>{
-    const dt = r.den_ngay ? new Date(r.den_ngay) : null;
-    if(!dt) return true;
-    const k = [r.program_id, dt.getMonth()+1, dt.getFullYear()].join('||');
+    if(!r.den_ngay) return true;
+    const k = [r.program_id, monthOfISO_(r.den_ngay), yearOfISO_(r.den_ngay)].join('||');
     const keep = keepRangeByGroup[k];
     return !keep || (r.tu_ngay+'~'+r.den_ngay)===keep;
   });
@@ -5595,9 +5623,8 @@ function checkDuplicateReports(){
   // 3) Trùng ở REPORT_CKCT (chi tiết mặt hàng) — cùng mã hàng, cùng chương trình, khác khoảng ngày
   const ckctMonthGroups = {};
   (DB.reportCKCT||[]).forEach(r=>{
-    const dt = r.den_ngay ? new Date(r.den_ngay) : null;
-    if(!dt) return;
-    const k = [r.program_id, r.mahang, dt.getMonth()+1, dt.getFullYear()].join('||');
+    if(!r.den_ngay) return;
+    const k = [r.program_id, r.mahang, monthOfISO_(r.den_ngay), yearOfISO_(r.den_ngay)].join('||');
     if(!ckctMonthGroups[k]) ckctMonthGroups[k] = [];
     ckctMonthGroups[k].push(r);
   });
@@ -6467,9 +6494,8 @@ function buildReportSaveRows(){
     from = snap.from; to = snap.to;
   }
   const den = to;
-  const dDate = new Date(den);
-  const thangCK = dDate.getMonth()+1;
-  const namCK = dDate.getFullYear();
+  const thangCK = monthOfISO_(den);
+  const namCK = yearOfISO_(den);
   const ckth = [], ckct = [];
   rows.forEach(r=>{
     if(!r.program) return; // chỉ lưu các dòng gắn với 1 chương trình cụ thể (bỏ qua "chưa gắn nhóm"/"chưa có CT")
@@ -6714,7 +6740,7 @@ async function autoRunAndSaveMonthsForLuyKe(){
   const baseProg = DB.programs.find(p=>p.id===lk.ma_ck_chinh);
   if(!baseProg){ toast('Không tìm thấy chương trình chiết khấu chính đã liên kết','err'); return; }
   const bnTo = document.getElementById('bn_to').value;
-  const year = bnTo ? new Date(bnTo).getFullYear() : new Date().getFullYear();
+  const year = bnTo ? yearOfISO_(bnTo) : new Date().getFullYear();
   const thangList = thangCsv.split(',').map(Number).filter(Boolean);
 
   // CẢNH BÁO GHI ĐÈ: nút này lưu LẦN LƯỢT nhiều tháng liên tiếp trong 1 lượt bấm — nếu hỏi confirm()
@@ -6766,7 +6792,7 @@ function computeBonusDiscount(lk, thangList, thoidiemCk, fromDate, toDate){
   }
 
   // BƯỚC 1: đối chiếu từng tháng lũy kế với dữ liệu ĐÃ LƯU ở REPORT_CKTH (không tính lại từ đầu)
-  const year = new Date(fromDate).getFullYear();
+  const year = yearOfISO_(fromDate);
   const monthChecks = thangList.map(m=>{
     const monthStart = toISO(new Date(year, m-1, 1));
     const monthEnd = toISO(new Date(year, m, 0));
@@ -6858,7 +6884,7 @@ function computeBonusDiscount(lk, thangList, thoidiemCk, fromDate, toDate){
 // Điều kiện 2: CẢ KỲ đạt tối thiểu Y% kế hoạch CẢ KỲ (dt_kehoach của chính CT lũy kế).
 // Đạt 1 trong 2 điều kiện -> cộng đúng % của điều kiện đó; đạt cả 2 -> cộng cả hai (không phải chọn max).
 function computeDualConditionBonus(lk, baseProg, thangList, thoidiemCk, fromDate, toDate){
-  const year = new Date(fromDate).getFullYear();
+  const year = yearOfISO_(fromDate);
   const monthChecks = thangList.map(m=>{
     const monthStart = toISO(new Date(year, m-1, 1));
     const monthEnd = toISO(new Date(year, m, 0));
@@ -6925,7 +6951,7 @@ async function runBonusCalc(){
   if(!baseProg){ toast('Không tìm thấy chương trình chiết khấu chính đã liên kết','err'); return; }
   UI._bonusFilters = { luyke, thang: thangCsv, thoidiem, from, to };
   const thangList = thangCsv.split(',').map(Number).filter(Boolean);
-  const year = to ? new Date(to).getFullYear() : new Date().getFullYear();
+  const year = to ? yearOfISO_(to) : new Date().getFullYear();
 
   // SỬA THEO YÊU CẦU: "Mã chiết khấu lũy kế" chọn ở khung này chỉ phục vụ đúng việc tính chiết khấu bổ
   // sung, không dùng cho mục đích nào khác — nên trước khi đối chiếu ĐẠT/CHƯA ĐẠT từng tháng, LUÔN tự
@@ -7025,7 +7051,6 @@ async function saveBonusReport(){
   if(btn){ btn.disabled = true; btn.innerHTML = 'Đang lưu...'; }
   try{
     const maCkBoSung = (r.baseProg.ma_chietkhau||'') + '_BOSUNG';
-    const dDate = new Date(r.to);
     const ckth = [{
       program_id: r.lk.id, ma_chietkhau: maCkBoSung,
       nhom_chietkhau: r.kieu_tinh==='dual_condition' ? '2 điều kiện độc lập' : 'Đạt tất cả các tháng (lũy kế)',
@@ -7035,7 +7060,7 @@ async function saveBonusReport(){
       pct_ht_kh_sl: '',
       hinh_thuc_chietkhau: 'CHIET_KHAU_BO_SUNG',
       chiet_khau: r.effectiveRatePct, so_tien_chietkhau: r.tienck,
-      thang_chietkhau: dDate.getMonth()+1, nam_chietkhau: dDate.getFullYear(),
+      thang_chietkhau: monthOfISO_(r.to), nam_chietkhau: yearOfISO_(r.to),
       trangthai: 'DAT',
       saved_at: new Date().toISOString()
     }];
