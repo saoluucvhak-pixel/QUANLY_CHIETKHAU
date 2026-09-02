@@ -1,6 +1,14 @@
 {
   "timeZone": "Asia/Ho_Chi_Minh",
-  "dependencies": {},
+  "dependencies": {
+    "enabledAdvancedServices": [
+      {
+        "userSymbol": "Drive",
+        "serviceId": "drive",
+        "version": "v2"
+      }
+    ]
+  },
   "webapp": {
     "executeAs": "USER_DEPLOYING",
     "access": "ANYONE_ANONYMOUS"
