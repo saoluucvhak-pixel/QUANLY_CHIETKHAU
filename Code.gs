@@ -130,7 +130,14 @@ function bumpDataVersion_() {
 // ĐỊNH DẠNG và được CHUYỂN NGƯỢC LẠI thành đúng con số gốc (số ngày kể từ mốc 30/12/1899 — công thức
 // serial date chuẩn của Google Sheets/Excel), giữ đúng giá trị số ban đầu người dùng đã nhập.
 const DATE_FIELD_NAMES_ = new Set([
-  'ngay', 'tu_ngay', 'den_ngay', 'hieuluctu', 'hieulucden', 'ngaylap', 'ngay_tinh', 'ngaytao'
+  'ngay', 'tu_ngay', 'den_ngay', 'hieuluctu', 'hieulucden', 'ngaylap', 'ngay_tinh', 'ngaytao',
+  // SỬA LỖI (báo lỗi thực tế: "nhập Khoảng ngày xét đạt KH xong, lưu rồi làm mới lại là mất"): 2 cột
+  // này (Mã chiết khấu / PROGRAMS, thêm ngày 28/08/2026) LÀ cột ngày tháng thật nhưng trước đây THIẾU
+  // trong danh sách này. Google Sheets tự nhận diện chuỗi "yyyy-mm-dd" ghi vào 2 cột này và lưu thành ô
+  // Date thật -> khi đọc lại, vì tên cột không có ở đây nên bị coi NHẦM là "lỗi định dạng" và bị chuyển
+  // ngược thành số serial thô (VD 46123) thay vì đúng chuỗi ngày -> ô <input type="date"> ở Frontend
+  // không hiểu số serial này nên hiển thị RỖNG, đúng như hiện tượng "nhập xong, lưu, làm mới là mất".
+  'kh_tu_ngay', 'kh_den_ngay'
 ]);
 function serialFromDate_(d) {
   // Mốc gốc serial date của Google Sheets/Excel là 30/12/1899 — dùng đúng constructor Date() cục bộ
