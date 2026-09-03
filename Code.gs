@@ -326,14 +326,16 @@ function readFilteredPurchaseRows_(suppliers) {
   if (lastRow < 2 || lastCol < 1) return { headers: [], rows: [] };
   const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
   const idx = headers.indexOf('nhacungcap');
-  const wanted = (Array.isArray(suppliers) ? suppliers : []).map(s => String(s).trim().toLowerCase()).filter(Boolean);
+  // TỐI ƯU: dùng Set thay vì mảng để tra "có trong danh sách NCC được chọn hay không" — tránh quét lại
+  // toàn bộ mảng wanted (indexOf) cho MỖI dòng dữ liệu (có thể 1.400+ dòng), giảm từ O(n×m) xuống O(n).
+  const wanted = new Set((Array.isArray(suppliers) ? suppliers : []).map(s => String(s).trim().toLowerCase()).filter(Boolean));
   const data = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
   const rows = data
     .filter(r => r.some(c => String(c).trim() !== '')) // bỏ dòng trắng
     .filter(r => {
-      if (!wanted.length) return true; // không lọc gì -> giữ hết (an toàn, không mất dữ liệu)
+      if (!wanted.size) return true; // không lọc gì -> giữ hết (an toàn, không mất dữ liệu)
       if (idx < 0) return true; // sheet không có cột nhacungcap -> không lọc được, trả hết
-      return wanted.indexOf(String(r[idx]).trim().toLowerCase()) !== -1;
+      return wanted.has(String(r[idx]).trim().toLowerCase());
     })
     .map(r => r.map((c, i) => sanitizeCellValue_(c, headers[i])));
   return { headers, rows };
@@ -739,7 +741,35 @@ function saveSheetData(sheetName, data, forceEmpty) {
   // dưới, nay đồng bộ luôn cho saveSheetData() — đường lưu chính của hầu hết mọi bảng trong app.
   const existingHeaders = existingRowCount > 0 ? sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0] : [];
   const headers = unionHeaders_(existingHeaders, data);
-  const values = data.map(r => headers.map(h => r[h] ?? ''));
+  // SỬA LỖI (mất dữ liệu ÂM THẦM ở cột "mồ côi"): unionHeaders_ ở trên chỉ đảm bảo TÊN cột không bị mất
+  // (VD 1 cột được thêm trực tiếp trên Sheet, ngoài app, SAU khi trình duyệt đã tải "data" vào bộ nhớ —
+  // nên KHÔNG dòng nào trong "data" có cột đó làm khoá riêng). Trước đây bước ghép "values" bên dưới vẫn
+  // dùng `r[h] ?? ''` cho MỌI cột, kể cả cột "mồ côi" này — tức là GIỮ ĐÚNG TÊN cột nhưng XOÁ SẠCH toàn bộ
+  // giá trị của cột đó trên Sheet (ghi '' cho mọi dòng), dù người dùng không hề có ý định đó. Nay: với các
+  // cột đã có sẵn trên Sheet (existingHeaders) mà KHÔNG dòng nào trong "data" sở hữu (hasOwnProperty) làm
+  // khoá riêng, giữ NGUYÊN giá trị cũ theo đúng vị trí dòng hiện có trên Sheet thay vì ghi đè bằng chuỗi
+  // rỗng — chỉ những dòng thực sự MỚI (vượt quá số dòng cũ) mới chấp nhận để trống ở cột đó (không có dữ
+  // liệu lịch sử nào để giữ).
+  const orphanCols = {};
+  headers.forEach(h => {
+    if (existingHeaders.indexOf(h) === -1) return; // cột hoàn toàn mới, không có dữ liệu cũ cần giữ
+    const ownedByAny = data.some(r => r && Object.prototype.hasOwnProperty.call(r, h));
+    if (!ownedByAny) orphanCols[h] = true;
+  });
+  let oldValuesByRow = null;
+  if (Object.keys(orphanCols).length && existingRowCount > 0) {
+    oldValuesByRow = sh.getRange(2, 1, existingRowCount, existingHeaders.length).getValues();
+  }
+  const values = data.map((r, i) => headers.map(h => {
+    if (orphanCols[h]) {
+      if (oldValuesByRow && i < oldValuesByRow.length) {
+        const ci = existingHeaders.indexOf(h);
+        return ci > -1 ? oldValuesByRow[i][ci] : '';
+      }
+      return '';
+    }
+    return r[h] ?? '';
+  }));
   writeRowsEfficient_(sh, headers, values);
 }
 // Dùng chung cho saveSheetData(): hội (union) toàn bộ tên cột — ưu tiên giữ đúng thứ tự cột ĐÃ CÓ SẴN
