@@ -1549,6 +1549,31 @@ function runFormulaTests(){
       assertEqual(groups[0].soMaHang, 1);
       assertClose(groups[0].tongTienCK, 260000, 'tổng nhóm phải khớp tổng dòng chi tiết duy nhất thuộc nhóm đó');
     });
+
+    /* ---- Báo cáo 4: CK cơ bản (giá công bố - giá mua) + buildTamTinhTheoGiaCongBo_ ---- */
+    test('computeTamTinhChietKhau_: ck_coban = Doanh số giá công bố - Doanh số giá mua, tongTienCKFull = ck_coban + tongTienCK', ()=>{
+      DB.catalog = {
+        mhck: [ { mamh:'SP001', mamh_ncc:'MAMH01', tenhang:'Lốp Casu 001', thuonghieu:'CASU', nhomkh:'GRP1', loaisp:'NO', dactinh:'NO', congdung:'NO', quycach:'NO' } ],
+        giacongbo: [ { mamh_ncc:'MAMH01', gia_congbo:12000, hieuluctu:'', hieulucden:'' } ]
+      };
+      DB.purchases = [ { ngay:'2026-08-10', mahang:'SP001', soluong:100, giatri:1000000, nhacungcap:'NCC A' } ];
+      DB.programs = []; // không cấu hình chương trình nào -> cô lập đúng phần CK cơ bản
+      const res = computeTamTinhChietKhau_('2026-08-20');
+      const row = res.rows.find(r=>r.mahang==='SP001');
+      assertTrue(!!row);
+      assertEqual(row.dt, 1000000); assertEqual(row.dtGiaCongBo, 1200000, 'Doanh số giá công bố = 100 x 12.000');
+      assertClose(row.ck_coban, 200000, 'CK cơ bản = 1.200.000 - 1.000.000');
+      assertClose(row.pctCoBan, 200000/1200000*100);
+      assertEqual(row.tongTienCK, 0, 'không có chương trình nào -> CK theo chương trình = 0');
+      assertClose(row.tongTienCKFull, 200000, 'tongTienCKFull = ck_coban (200.000) + tongTienCK (0)');
+      assertClose(row.pctGiaCongBoFull, 200000/1200000*100);
+
+      const groups4 = buildTamTinhTheoGiaCongBo_(res);
+      assertEqual(groups4.length, 1);
+      assertEqual(groups4[0].items.length, 1);
+      assertClose(groups4[0].ck_coban, 200000, 'tổng nhóm phải khớp CK cơ bản của dòng chi tiết duy nhất');
+      assertClose(groups4[0].tongTienCKFull, 200000);
+    });
   } finally {
     DB = dbBackupTamTinh;
   }
@@ -7736,11 +7761,18 @@ function computeTamTinhChietKhau_(asOfISO){
     });
 
     const tongTienCK = catAmt.ck_thang + catAmt.ck_quy + catAmt.ck_6thang + catAmt.ck_nam + ckKhac;
+    // CK cơ bản = phần chênh lệch Giá công bố (niêm yết) - Giá mua thực tế trên hóa đơn tháng hiện hành —
+    // khoản này ĐÃ NẰM SẴN trong giá mua (không phải khoản cộng thêm từ chương trình chiết khấu Tầng 2),
+    // dùng cho Báo cáo 4 "Tổng hợp theo giá công bố" (xem buildTamTinhTheoGiaCongBo_).
+    const ckCoBan = dtGiaCongBo - s.dt;
+    const tongTienCKFull = ckCoBan + tongTienCK; // CK cơ bản + CK theo chương trình, cùng quy về giá công bố
     return {
       mahang: s.mahang, tenhang: s.tenhang, dims: s.dims,
       sl: s.sl, dt: s.dt, dtGiaCongBo, giaMuaTB, giaCongBoTB,
       ck_thang: catAmt.ck_thang, ck_quy: catAmt.ck_quy, ck_6thang: catAmt.ck_6thang, ck_nam: catAmt.ck_nam,
       ck_khac: ckKhac, tongTienCK,
+      ck_coban: ckCoBan, pctCoBan: dtGiaCongBo ? ckCoBan/dtGiaCongBo*100 : null,
+      tongTienCKFull, pctGiaCongBoFull: dtGiaCongBo ? tongTienCKFull/dtGiaCongBo*100 : null,
       pctGiaCongBo: dtGiaCongBo ? tongTienCK/dtGiaCongBo*100 : null,
       pctGiaMua: s.dt ? tongTienCK/s.dt*100 : null,
       catDetail, khacDetail
@@ -7773,6 +7805,32 @@ function buildTamTinhTongHop_(computed){
     pctGiaCongBo: g.dtGiaCongBo ? g.tongTienCK/g.dtGiaCongBo*100 : null,
     pctGiaMua: g.dt ? g.tongTienCK/g.dt*100 : null
   })).sort((a,b)=>b.tongTienCK-a.tongTienCK);
+}
+// BÁO CÁO 4 — Tổng hợp CK tạm tính theo GIÁ CÔNG BỐ, phân cấp Nhóm KH (nhomkh) > Nhóm mặt hàng (thương
+// hiệu) > Mặt hàng (SKU) — mỗi nhóm kèm dòng "Cộng nhóm". Khác Báo cáo 1: gộp CẢ khoản CK cơ bản (đã nằm
+// sẵn trong giá mua) vào Tổng tiền CK, để %CK cuối cùng phản ánh ĐÚNG mức giảm giá thật so với giá công
+// bố (niêm yết) — không chỉ phần CK cộng thêm theo chương trình như Báo cáo 1/2.
+function buildTamTinhTheoGiaCongBo_(computed){
+  const groups = {};
+  computed.rows.forEach(r=>{
+    const nhomkh = r.dims.nhomkh || 'NO', thuonghieu = r.dims.thuonghieu || 'NO';
+    const key = nhomkh+'||'+thuonghieu;
+    if(!groups[key]) groups[key] = {
+      nhomkh, thuonghieu, items:[],
+      dt:0, dtGiaCongBo:0, ck_coban:0, ck_thang:0, ck_quy:0, ck_6thang:0, ck_nam:0, ck_khac:0, tongTienCKFull:0
+    };
+    const g = groups[key];
+    g.items.push(r);
+    g.dt+=r.dt; g.dtGiaCongBo+=r.dtGiaCongBo; g.ck_coban+=r.ck_coban;
+    g.ck_thang+=r.ck_thang; g.ck_quy+=r.ck_quy; g.ck_6thang+=r.ck_6thang; g.ck_nam+=r.ck_nam; g.ck_khac+=r.ck_khac;
+    g.tongTienCKFull+=r.tongTienCKFull;
+  });
+  return Object.values(groups).map(g=>Object.assign({}, g, {
+    items: g.items.slice().sort((a,b)=>b.tongTienCKFull-a.tongTienCKFull),
+    nhomkhTen: dimName('nhomkh', g.nhomkh), thuonghieuTen: dimName('thuonghieu', g.thuonghieu),
+    pctCoBan: g.dtGiaCongBo ? g.ck_coban/g.dtGiaCongBo*100 : null,
+    pctGiaCongBoFull: g.dtGiaCongBo ? g.tongTienCKFull/g.dtGiaCongBo*100 : null
+  })).sort((a,b)=> (a.nhomkh+a.thuonghieu).localeCompare(b.nhomkh+b.thuonghieu));
 }
 
 function renderTamTinh(){
@@ -7820,10 +7878,13 @@ function renderTamTinhResult(){
     <div class="tabs2" style="margin-bottom:12px">
       <div class="tab2 ${UI._tamTinhView==='tonghop'?'active':''}" onclick="setTamTinhView('tonghop')">Tổng hợp theo Nhóm hàng/Thương hiệu</div>
       <div class="tab2 ${UI._tamTinhView==='chitiet'?'active':''}" onclick="setTamTinhView('chitiet')">Chi tiết theo mặt hàng</div>
+      <div class="tab2 ${UI._tamTinhView==='giacongbo'?'active':''}" onclick="setTamTinhView('giacongbo')">Tổng hợp theo giá công bố</div>
     </div>
     <div id="tamTinhViewBody"></div>
   `;
-  if(UI._tamTinhView==='chitiet') renderTamTinhChiTiet_(res); else renderTamTinhTongHop_(res);
+  if(UI._tamTinhView==='chitiet') renderTamTinhChiTiet_(res);
+  else if(UI._tamTinhView==='giacongbo') renderTamTinhGiaCongBo_(res);
+  else renderTamTinhTongHop_(res);
 }
 function renderTamTinhTongHop_(res){
   const groups = buildTamTinhTongHop_(res);
@@ -7892,6 +7953,59 @@ function renderTamTinhChiTiet_(res){
           <td class="num mono">${fmtVND(rows.reduce((s,r)=>s+r.ck_khac,0))}</td>
           <td></td><td></td>
           <td class="num mono" style="color:var(--emerald-dark)">${fmtVND(rows.reduce((s,r)=>s+r.tongTienCK,0))}</td>
+        </tr></tfoot>
+      </table></div>` : `<div class="empty">Không có mã hàng nào phát sinh mua trong tháng đã chọn.</div>`}
+    </div>
+  `;
+}
+// BÁO CÁO 4 — Tổng hợp CK tạm tính theo giá công bố, phân cấp Nhóm hàng > Thương hiệu > Mặt hàng, có dòng
+// "Cộng nhóm" sau mỗi cặp. Xem giải thích công thức tại buildTamTinhTheoGiaCongBo_/tính ck_coban trong
+// computeTamTinhChietKhau_.
+function renderTamTinhGiaCongBo_(res){
+  const groups = buildTamTinhTheoGiaCongBo_(res);
+  const t = res.rows.reduce((a,r)=>{
+    a.dt+=r.dt; a.dtGiaCongBo+=r.dtGiaCongBo; a.ck_coban+=r.ck_coban;
+    a.ck_thang+=r.ck_thang; a.ck_quy+=r.ck_quy; a.ck_6thang+=r.ck_6thang; a.ck_nam+=r.ck_nam; a.ck_khac+=r.ck_khac;
+    a.tongTienCKFull+=r.tongTienCKFull;
+    return a;
+  }, {dt:0,dtGiaCongBo:0,ck_coban:0,ck_thang:0,ck_quy:0,ck_6thang:0,ck_nam:0,ck_khac:0,tongTienCKFull:0});
+  const rowsHtml = groups.map(g=>{
+    const itemRows = g.items.map((r,i)=>`<tr style="cursor:pointer" onclick="showTamTinhSkuDetail_(${res.rows.indexOf(r)})">
+      ${i===0?`<td class="mono" style="background:var(--slate-50);font-weight:700" rowspan="${g.items.length}">${esc(g.nhomkhTen)}</td><td style="background:var(--slate-50);font-weight:700" rowspan="${g.items.length}">${esc(g.thuonghieuTen)}</td>`:''}
+      <td class="mono">${esc(r.mahang)} — ${esc(r.tenhang)}</td>
+      <td class="num mono">${fmtVND(r.dtGiaCongBo)}</td><td class="num mono">${fmtVND(r.dt)}</td>
+      <td class="num mono">${fmtVND(r.ck_coban)}</td><td class="num mono">${r.pctCoBan!=null?fmtPct(r.pctCoBan):'—'}</td>
+      <td class="num mono">${fmtVND(r.ck_thang)}</td><td class="num mono">${fmtVND(r.ck_quy)}</td>
+      <td class="num mono">${fmtVND(r.ck_6thang)}</td><td class="num mono">${fmtVND(r.ck_nam)}</td><td class="num mono">${fmtVND(r.ck_khac)}</td>
+      <td class="num mono" style="color:var(--emerald-dark);font-weight:700">${fmtVND(r.tongTienCKFull)}</td>
+      <td class="num mono" style="color:var(--emerald-dark);font-weight:700">${r.pctGiaCongBoFull!=null?fmtPct(r.pctGiaCongBoFull):'—'}</td>
+    </tr>`).join('');
+    const subtotalRow = `<tr style="background:var(--emerald-soft);font-weight:700;color:var(--emerald-dark)">
+      <td colspan="3">Cộng nhóm — ${esc(g.nhomkhTen)} / ${esc(g.thuonghieuTen)} (${g.items.length} mã hàng)</td>
+      <td class="num mono">${fmtVND(g.dtGiaCongBo)}</td><td class="num mono">${fmtVND(g.dt)}</td>
+      <td class="num mono">${fmtVND(g.ck_coban)}</td><td class="num mono">${g.pctCoBan!=null?fmtPct(g.pctCoBan):'—'}</td>
+      <td class="num mono">${fmtVND(g.ck_thang)}</td><td class="num mono">${fmtVND(g.ck_quy)}</td>
+      <td class="num mono">${fmtVND(g.ck_6thang)}</td><td class="num mono">${fmtVND(g.ck_nam)}</td><td class="num mono">${fmtVND(g.ck_khac)}</td>
+      <td class="num mono">${fmtVND(g.tongTienCKFull)}</td>
+      <td class="num mono">${g.pctGiaCongBoFull!=null?fmtPct(g.pctGiaCongBoFull):'—'}</td>
+    </tr>`;
+    return itemRows + subtotalRow;
+  }).join('');
+  document.getElementById('tamTinhViewBody').innerHTML = `
+    <div class="section-note"><b>CK cơ bản</b> = Doanh số giá công bố − Doanh số giá mua (khoản đã nằm sẵn trong giá mua, không phải CK cộng thêm theo chương trình) · <b>Tổng tiền CK</b> = CK cơ bản + CK tháng + CK quý + CK 1/2 năm + CK năm + CK khác · <b>Tỷ lệ CK/giá CB</b> = Tổng tiền CK ÷ Doanh số giá công bố — mức giảm giá THẬT SỰ so với giá niêm yết.</div>
+    <div class="card">
+      <div class="card-head"><div><h2>Tổng hợp theo giá công bố</h2><div class="hint">${groups.length} nhóm · ${res.rows.length} mã hàng</div></div></div>
+      ${groups.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Nhóm hàng</th><th>Thương hiệu</th><th>Mặt hàng</th><th class="num">Doanh số giá CB</th><th class="num">Doanh số giá mua</th><th class="num">Tiền CK cơ bản</th><th class="num">Tỷ lệ CK cơ bản</th><th class="num">CK tháng</th><th class="num">CK quý</th><th class="num">CK 1/2 năm</th><th class="num">CK năm</th><th class="num">CK khác</th><th class="num">Tổng tiền CK</th><th class="num">Tỷ lệ CK/giá CB</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+        <tfoot><tr style="font-weight:700;background:var(--navy-950);color:#fff">
+          <td colspan="3">TỔNG CỘNG</td>
+          <td class="num mono">${fmtVND(t.dtGiaCongBo)}</td><td class="num mono">${fmtVND(t.dt)}</td>
+          <td class="num mono">${fmtVND(t.ck_coban)}</td><td class="num mono">${t.dtGiaCongBo?fmtPct(t.ck_coban/t.dtGiaCongBo*100):'—'}</td>
+          <td class="num mono">${fmtVND(t.ck_thang)}</td><td class="num mono">${fmtVND(t.ck_quy)}</td>
+          <td class="num mono">${fmtVND(t.ck_6thang)}</td><td class="num mono">${fmtVND(t.ck_nam)}</td><td class="num mono">${fmtVND(t.ck_khac)}</td>
+          <td class="num mono">${fmtVND(t.tongTienCKFull)}</td>
+          <td class="num mono">${t.dtGiaCongBo?fmtPct(t.tongTienCKFull/t.dtGiaCongBo*100):'—'}</td>
         </tr></tfoot>
       </table></div>` : `<div class="empty">Không có mã hàng nào phát sinh mua trong tháng đã chọn.</div>`}
     </div>
@@ -7971,6 +8085,52 @@ function exportTamTinhXlsx(){
   xbStyleDataRange_(ws2, 1, out2.length, COLS2.length, colFmt2, (r)=> (r-1===totalRow2) ? { rowStyle: XB_S_.total } : null);
   xbSetCols_(ws2, [14,30,16,18,14,14,14,14,14,16,14,18]);
 
+  // BÁO CÁO 4 — Tổng hợp theo giá công bố: phân cấp Nhóm hàng > Thương hiệu > Mặt hàng, kèm dòng "Cộng
+  // nhóm" sau mỗi cặp (flat sheet, không dùng rowspan — Excel rowspan không tương thích tốt với json_to_sheet).
+  const groups4 = buildTamTinhTheoGiaCongBo_(res);
+  const COLS4 = ['Nhóm hàng','Thương hiệu','Mặt hàng','Doanh số giá công bố','Doanh số giá mua','Tiền CK cơ bản','Tỷ lệ CK cơ bản','CK tháng','CK quý','CK 1/2 năm','CK năm','CK khác','Tổng tiền CK','Tỷ lệ CK/giá CB'];
+  const out4 = [];
+  const subtotalRows4 = [];
+  groups4.forEach(g=>{
+    g.items.forEach(r=> out4.push({
+      'Nhóm hàng': g.nhomkhTen, 'Thương hiệu': g.thuonghieuTen, 'Mặt hàng': `${r.mahang} — ${r.tenhang}`,
+      'Doanh số giá công bố': r.dtGiaCongBo, 'Doanh số giá mua': r.dt,
+      'Tiền CK cơ bản': r.ck_coban, 'Tỷ lệ CK cơ bản': r.pctCoBan!=null?Number(r.pctCoBan.toFixed(2)):'',
+      'CK tháng': r.ck_thang, 'CK quý': r.ck_quy, 'CK 1/2 năm': r.ck_6thang, 'CK năm': r.ck_nam, 'CK khác': r.ck_khac,
+      'Tổng tiền CK': r.tongTienCKFull,
+      'Tỷ lệ CK/giá CB': r.pctGiaCongBoFull!=null?Number(r.pctGiaCongBoFull.toFixed(2)):''
+    }));
+    subtotalRows4.push(out4.length);
+    out4.push({
+      'Nhóm hàng': `Cộng nhóm — ${g.nhomkhTen} / ${g.thuonghieuTen}`, 'Doanh số giá công bố': g.dtGiaCongBo, 'Doanh số giá mua': g.dt,
+      'Tiền CK cơ bản': g.ck_coban, 'Tỷ lệ CK cơ bản': g.pctCoBan!=null?Number(g.pctCoBan.toFixed(2)):'',
+      'CK tháng': g.ck_thang, 'CK quý': g.ck_quy, 'CK 1/2 năm': g.ck_6thang, 'CK năm': g.ck_nam, 'CK khác': g.ck_khac,
+      'Tổng tiền CK': g.tongTienCKFull,
+      'Tỷ lệ CK/giá CB': g.pctGiaCongBoFull!=null?Number(g.pctGiaCongBoFull.toFixed(2)):''
+    });
+  });
+  const total4 = rows.reduce((s,r)=>s+r.tongTienCKFull,0);
+  const totalDTCB4 = rows.reduce((s,r)=>s+r.dtGiaCongBo,0);
+  const totalRow4 = out4.length;
+  out4.push({ 'Nhóm hàng':'TỔNG CỘNG', 'Doanh số giá công bố': totalDTCB4, 'Doanh số giá mua': rows.reduce((s,r)=>s+r.dt,0),
+    'Tiền CK cơ bản': rows.reduce((s,r)=>s+r.ck_coban,0), 'Tỷ lệ CK cơ bản': totalDTCB4?Number((rows.reduce((s,r)=>s+r.ck_coban,0)/totalDTCB4*100).toFixed(2)):'',
+    'CK tháng': rows.reduce((s,r)=>s+r.ck_thang,0), 'CK quý': rows.reduce((s,r)=>s+r.ck_quy,0),
+    'CK 1/2 năm': rows.reduce((s,r)=>s+r.ck_6thang,0), 'CK năm': rows.reduce((s,r)=>s+r.ck_nam,0), 'CK khác': rows.reduce((s,r)=>s+r.ck_khac,0),
+    'Tổng tiền CK': total4, 'Tỷ lệ CK/giá CB': totalDTCB4?Number((total4/totalDTCB4*100).toFixed(2)):'' });
+  const ws4 = XLSX.utils.json_to_sheet(out4, {header: COLS4});
+  const colFmt4 = new Array(COLS4.length).fill(null);
+  ['Doanh số giá công bố','Doanh số giá mua','Tiền CK cơ bản','CK tháng','CK quý','CK 1/2 năm','CK năm','CK khác','Tổng tiền CK'].forEach(h=>colFmt4[COLS4.indexOf(h)]='#,##0');
+  ['Tỷ lệ CK cơ bản','Tỷ lệ CK/giá CB'].forEach(h=>colFmt4[COLS4.indexOf(h)]='0.00"%"');
+  xbStyleHeaderRow_(ws4, 0, COLS4.length);
+  const subtotalSet4 = new Set(subtotalRows4);
+  xbStyleDataRange_(ws4, 1, out4.length, COLS4.length, colFmt4, (r)=>{
+    const dataIdx = r-1;
+    if(dataIdx===totalRow4) return { rowStyle: XB_S_.total };
+    if(subtotalSet4.has(dataIdx)) return { rowStyle: XB_S_.ok };
+    return null;
+  });
+  xbSetCols_(ws4, [14,14,32,16,16,14,14,14,14,14,14,14,16,14]);
+
   const wsTongQuan = buildSimpleKpiSheet_('BẢNG CHIẾT KHẤU TẠM TÍNH THEO THÁNG',
     [['Tháng áp dụng', `${fmtDate(res.monthStart)} → ${fmtDate(res.monthEnd)}`]].concat(
       res.catRefPeriods.map(c=>[`Kỳ tham chiếu — ${c.label}`, c.ref?`${fmtDate(c.ref.from)} → ${fmtDate(c.ref.to)}`:'—'])
@@ -7980,12 +8140,14 @@ function exportTamTinhXlsx(){
       { label:'Tổng doanh số mua (đ)', value: rows.reduce((s,r)=>s+r.dt,0), kind:'kvnum' },
       { label:'Tổng doanh số theo giá công bố (đ)', value: rows.reduce((s,r)=>s+r.dtGiaCongBo,0), kind:'kvnum' },
       { label:'Tổng số tiền chiết khấu tạm tính (đ)', value: total2, kind:'kvnum-gold' },
+      { label:'Tổng CK tạm tính quy về giá công bố — gồm CK cơ bản (đ)', value: total4, kind:'kvnum-gold' },
     ]);
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, wsTongQuan, 'TongQuan');
   XLSX.utils.book_append_sheet(wb, ws1, 'TongHop_NhomHang_ThuongHieu');
   XLSX.utils.book_append_sheet(wb, ws2, 'ChiTiet_MatHang');
+  XLSX.utils.book_append_sheet(wb, ws4, 'TongHop_GiaCongBo');
   downloadWb(wb, `ChietKhauTamTinh_${res.monthStart.slice(0,7)}.xlsx`);
   toast('Đã xuất bảng chiết khấu tạm tính','ok');
 }
