@@ -1448,6 +1448,111 @@ function runFormulaTests(){
     }
   });
 
+  /* ---- resolveTamTinhPeriod_: chọn kỳ tham chiếu cho "Bảng chiết khấu tạm tính theo tháng" ---- */
+  test('resolveTamTinhPeriod_: Tháng -> LUÔN lấy tháng hiện hành (asOfISO)', ()=>{
+    const r = resolveTamTinhPeriod_('Tháng', '2026-09-15');
+    assertEqual(r.from, '2026-09-01'); assertEqual(r.to, '2026-09-30');
+  });
+  test('resolveTamTinhPeriod_: Quý — tháng hiện hành GIỮA quý (tháng 8) -> lùi về quý TRƯỚC (Q2)', ()=>{
+    const r = resolveTamTinhPeriod_('Quý', '2026-08-20');
+    assertEqual(r.from, '2026-04-01'); assertEqual(r.to, '2026-06-30');
+  });
+  test('resolveTamTinhPeriod_: Quý — tháng hiện hành LÀ tháng cuối quý (tháng 9) -> dùng quý HIỆN HÀNH (Q3)', ()=>{
+    const r = resolveTamTinhPeriod_('Quý', '2026-09-05');
+    assertEqual(r.from, '2026-07-01'); assertEqual(r.to, '2026-09-30');
+  });
+  test('resolveTamTinhPeriod_: Quý — tháng 1 (đầu Q1) -> lùi về Q4 NĂM TRƯỚC (vắt qua năm)', ()=>{
+    const r = resolveTamTinhPeriod_('Quý', '2026-01-10');
+    assertEqual(r.from, '2025-10-01'); assertEqual(r.to, '2025-12-31');
+  });
+  test('resolveTamTinhPeriod_: 6 Tháng — tháng 9 (giữa nửa cuối năm) -> lùi về nửa năm ĐẦU (H1)', ()=>{
+    const r = resolveTamTinhPeriod_('6 Tháng', '2026-09-05');
+    assertEqual(r.from, '2026-01-01'); assertEqual(r.to, '2026-06-30');
+  });
+  test('resolveTamTinhPeriod_: 6 Tháng — tháng 6 (cuối H1) -> dùng H1 HIỆN HÀNH', ()=>{
+    const r = resolveTamTinhPeriod_('6 Tháng', '2026-06-10');
+    assertEqual(r.from, '2026-01-01'); assertEqual(r.to, '2026-06-30');
+  });
+  test('resolveTamTinhPeriod_: 6 Tháng — tháng 12 (cuối H2) -> dùng H2 HIỆN HÀNH', ()=>{
+    const r = resolveTamTinhPeriod_('6 Tháng', '2026-12-10');
+    assertEqual(r.from, '2026-07-01'); assertEqual(r.to, '2026-12-31');
+  });
+  test('resolveTamTinhPeriod_: 6 Tháng — tháng 3 (đầu H1) -> lùi về H2 NĂM TRƯỚC (vắt qua năm)', ()=>{
+    const r = resolveTamTinhPeriod_('6 Tháng', '2026-03-10');
+    assertEqual(r.from, '2025-07-01'); assertEqual(r.to, '2025-12-31');
+  });
+  test('resolveTamTinhPeriod_: Năm — tháng không phải 12 -> lấy NĂM TRƯỚC', ()=>{
+    const r = resolveTamTinhPeriod_('Năm', '2026-09-05');
+    assertEqual(r.from, '2025-01-01'); assertEqual(r.to, '2025-12-31');
+  });
+  test('resolveTamTinhPeriod_: Năm — tháng 12 -> dùng NĂM HIỆN HÀNH', ()=>{
+    const r = resolveTamTinhPeriod_('Năm', '2026-12-25');
+    assertEqual(r.from, '2026-01-01'); assertEqual(r.to, '2026-12-31');
+  });
+  test('resolveTamTinhPeriod_: thời điểm không xác định hoặc ngày rỗng -> null', ()=>{
+    assertEqual(resolveTamTinhPeriod_('Theo hiệu lực CTKM', '2026-09-05'), null);
+    assertEqual(resolveTamTinhPeriod_('Tháng', ''), null);
+  });
+
+  /* ---- Bài test tích hợp: computeTamTinhChietKhau_/buildTamTinhTongHop_ — kiểm tra ĐÚNG điểm cốt lõi
+     của tính năng: % lấy từ KỲ THAM CHIẾU (đã hoàn tất) nhưng ÁP DỤNG lên doanh số THÁNG HIỆN HÀNH. ---- */
+  const dbBackupTamTinh = DB;
+  try{
+    DB = {
+      catalog: { mhck: [ { mamh:'SP001', tenhang:'Lốp Casu 001', thuonghieu:'CASU', nhomkh:'GRP1', loaisp:'NO', dactinh:'NO', congdung:'NO', quycach:'NO' } ], giacongbo: [] },
+      purchases: [
+        // Tháng hiện hành (asOf = 2026-08-20) — dùng để ÁP DỤNG mọi tỷ lệ CK lên
+        { ngay:'2026-08-10', mahang:'SP001', soluong:100, giatri:1000000, nhacungcap:'NCC A' },
+        // Kỳ tham chiếu Quý (Q2: 04-06/2026) VÀ 6 Tháng (H1: 01-06/2026, trùng luôn) — SL=200 đủ đạt bậc
+        { ngay:'2026-05-15', mahang:'SP001', soluong:200, giatri:2000000, nhacungcap:'NCC A' },
+        // Kỳ tham chiếu Năm (năm trước, 2025) — SL=80 đủ đạt bậc P_NAM (sl_min=50)
+        { ngay:'2025-06-01', mahang:'SP001', soluong:80, giatri:800000, nhacungcap:'NCC A' },
+      ],
+      programs: [
+        { id:'P_THANG', ma_chietkhau:'CT_THANG', thoidiem_ck:'Tháng', dim_thuonghieu:'CASU', dim_nhomkh:'NO', dim_loaisp:'NO', dim_dactinh:'NO', dim_congdung:'NO', dim_quycach:'NO',
+          sl_min:50, sl_max:0, dt_min:0, dt_max:0, dieukien_sldt:'AND', ht_chietkhau:'PERCENT_GIAMUA', tl_ck:5, ma_doanhthu:'', dt_kehoach:0 },
+        { id:'P_QUY', ma_chietkhau:'CT_QUY', thoidiem_ck:'Quý', dim_thuonghieu:'CASU', dim_nhomkh:'NO', dim_loaisp:'NO', dim_dactinh:'NO', dim_congdung:'NO', dim_quycach:'NO',
+          sl_min:150, sl_max:0, dt_min:0, dt_max:0, dieukien_sldt:'AND', ht_chietkhau:'PERCENT_GIAMUA', tl_ck:8, ma_doanhthu:'', dt_kehoach:0 },
+        { id:'P_6THANG', ma_chietkhau:'CT_6THANG', thoidiem_ck:'6 Tháng', dim_thuonghieu:'CASU', dim_nhomkh:'NO', dim_loaisp:'NO', dim_dactinh:'NO', dim_congdung:'NO', dim_quycach:'NO',
+          sl_min:150, sl_max:0, dt_min:0, dt_max:0, dieukien_sldt:'AND', ht_chietkhau:'PERCENT_GIAMUA', tl_ck:10, ma_doanhthu:'', dt_kehoach:0 },
+        { id:'P_NAM', ma_chietkhau:'CT_NAM', thoidiem_ck:'Năm', dim_thuonghieu:'CASU', dim_nhomkh:'NO', dim_loaisp:'NO', dim_dactinh:'NO', dim_congdung:'NO', dim_quycach:'NO',
+          sl_min:50, sl_max:0, dt_min:0, dt_max:0, dieukien_sldt:'AND', ht_chietkhau:'PERCENT_GIAMUA', tl_ck:3, ma_doanhthu:'', dt_kehoach:0 },
+      ],
+      dieukien: [], doanhthu: [], kehoach: [], kehoachChiTiet: [], programsLuyKe: [], reportCKTH: []
+    };
+    test('computeTamTinhChietKhau_: mỗi loại CK lấy % từ ĐÚNG kỳ tham chiếu nhưng áp lên doanh số THÁNG HIỆN HÀNH', ()=>{
+      const res = computeTamTinhChietKhau_('2026-08-20');
+      const row = res.rows.find(r=>r.mahang==='SP001');
+      assertTrue(!!row, 'phải có dòng cho SP001 (có phát sinh mua tháng 8/2026)');
+      assertEqual(row.dt, 1000000, 'Doanh số mua phải LẤY THÁNG HIỆN HÀNH (8/2026 = 1.000.000), không cộng dồn các kỳ khác');
+      assertClose(row.ck_thang, 50000, 'CK tháng = 5% x 1.000.000 (Tháng luôn lấy chính tháng hiện hành làm kỳ tham chiếu)');
+      assertClose(row.ck_quy, 80000, 'CK quý = 8% (đạt bậc ở Q2 nhờ SL=200) x 1.000.000 (ÁP lên DT tháng 8, không phải DT của Q2)');
+      assertClose(row.ck_6thang, 100000, 'CK 1/2 năm = 10% (đạt bậc ở H1 nhờ SL=200) x 1.000.000');
+      assertClose(row.ck_nam, 30000, 'CK năm = 3% (đạt bậc ở năm 2025 nhờ SL=80) x 1.000.000');
+      assertEqual(row.ck_khac, 0, 'không cấu hình Chiết khấu lũy kế nào trong test này -> CK khác = 0');
+      assertClose(row.tongTienCK, 260000, 'Tổng = 50.000+80.000+100.000+30.000');
+      assertClose(row.pctGiaMua, 26, 'Tổng %CK/giá mua = 260.000/1.000.000 x 100');
+    });
+    test('computeTamTinhChietKhau_: kỳ tham chiếu trả về đúng cho từng loại (dùng để hiển thị/chú thích)', ()=>{
+      const res = computeTamTinhChietKhau_('2026-08-20');
+      const byKey = {}; res.catRefPeriods.forEach(c=>byKey[c.key]=c.ref);
+      assertEqual(byKey.ck_thang.from, '2026-08-01'); assertEqual(byKey.ck_thang.to, '2026-08-31');
+      assertEqual(byKey.ck_quy.from, '2026-04-01'); assertEqual(byKey.ck_quy.to, '2026-06-30');
+      assertEqual(byKey.ck_6thang.from, '2026-01-01'); assertEqual(byKey.ck_6thang.to, '2026-06-30');
+      assertEqual(byKey.ck_nam.from, '2025-01-01'); assertEqual(byKey.ck_nam.to, '2025-12-31');
+    });
+    test('buildTamTinhTongHop_: gộp đúng theo Nhóm hàng + Thương hiệu, tổng khớp với dòng chi tiết', ()=>{
+      const res = computeTamTinhChietKhau_('2026-08-20');
+      const groups = buildTamTinhTongHop_(res);
+      assertEqual(groups.length, 1, 'chỉ 1 mã hàng -> 1 nhóm (GRP1 + CASU)');
+      assertEqual(groups[0].nhomkh, 'GRP1'); assertEqual(groups[0].thuonghieu, 'CASU');
+      assertEqual(groups[0].soMaHang, 1);
+      assertClose(groups[0].tongTienCK, 260000, 'tổng nhóm phải khớp tổng dòng chi tiết duy nhất thuộc nhóm đó');
+    });
+  } finally {
+    DB = dbBackupTamTinh;
+  }
+
   const okCount = results.filter(r=>r.ok).length;
   openModal(`
     <h3>Kết quả tự kiểm thử công thức chiết khấu</h3>
@@ -1717,6 +1822,7 @@ function renderShell(){
       {id:'chuongtrinh', ic:ICON.layers, label:'Danh mục chương trình', count:DB.chuongtrinh.length},
       {id:'programs', ic:ICON.prog, label:'Mã chiết khấu', count:DB.programs.length+DB.programsLuyKe.length},
       {id:'report', ic:ICON.calc, label:'Tính chiết khấu'},
+      {id:'tamtinh', ic:ICON.calc, label:'Chiết khấu tạm tính theo tháng'},
     ]},
     { label:'Báo cáo', items: [
       {id:'doichieu', ic:ICON.scale, label:'Đối chiếu giá mua - giá công bố'},
@@ -1740,6 +1846,7 @@ function renderShell(){
     purchases:['Sổ chi tiết mua hàng','Nạp dữ liệu mua hàng (từ Excel / Google Sheet) để đối chiếu chiết khấu'],
     doichieu:['Đối chiếu giá mua - giá công bố','So sánh giá mua thực tế bình quân với giá công bố NCC theo từng mặt hàng và từng phiếu mua hàng'],
     report:['Tính chiết khấu','Tính chiết khấu thực tế đạt được theo từng kỳ, đối chiếu chương trình đã khai báo'],
+    tamtinh:['Chiết khấu tạm tính theo tháng','Ước tính % chiết khấu áp dụng cho tháng hiện hành (lấy từ kỳ Quý/6 Tháng/Năm gần nhất đã hoàn tất) để có cơ sở bán hàng ngay trong tháng, không cần đợi hết kỳ'],
     baocao:['Báo cáo chiết khấu','Phân tích tổng hợp từ dữ liệu đã lưu (REPORT_CKTH/CKCT): theo mặt hàng, theo mã chiết khấu, bảng hạch toán, đối chiếu nhiều kỳ liền kề, tra cứu chiết khấu theo 1 mặt hàng'],
     huongdan:['Hướng dẫn sử dụng','Đi từng bước từ khai báo danh mục nền đến cấu hình chương trình và tính chiết khấu hằng kỳ'],
     mauimport:['Mẫu import Excel','Tải file mẫu Excel dùng chung cho mọi màn hình "Tải file Excel" trong app'],
@@ -1816,6 +1923,11 @@ async function routeContent(){
     if(!DB._giacongboLoaded){ loadingPane_('Đang tải dữ liệu Giá công bố NCC cho Tính chiết khấu...'); try{ await ensureGiaCongBoLoaded(); }catch(e){ toast('Lỗi tải Giá công bố: '+(e.message||e),'err'); } }
     if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng cho Tính chiết khấu...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
     renderReport();
+  }
+  else if(UI.tab==='tamtinh'){
+    if(!DB._giacongboLoaded){ loadingPane_('Đang tải dữ liệu Giá công bố NCC cho Chiết khấu tạm tính...'); try{ await ensureGiaCongBoLoaded(); }catch(e){ toast('Lỗi tải Giá công bố: '+(e.message||e),'err'); } }
+    if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng cho Chiết khấu tạm tính...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
+    renderTamTinh();
   }
   else if(UI.tab==='baocao'){
     if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng cho Báo cáo...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
@@ -6470,6 +6582,43 @@ function snapPeriodFromDate(baseDateISO, thoidiem){
   }
   return null; // '' hoặc 'Theo hiệu lực CTKM' -> không tự quy đổi, giữ nguyên ngày đã nhập
 }
+// Xác định KỲ THAM CHIẾU dùng để "tạm tính" % chiết khấu của 1 loại thời điểm (Tháng/Quý/6 Tháng/Năm)
+// tính tới 1 ngày "đang xét" (asOfISO, mặc định là hôm nay) — dùng cho màn "Bảng chiết khấu tạm tính
+// theo tháng" (mục đích: biết TRƯỚC khoảng % chiết khấu nào đang áp dụng để còn bán hàng, KHÔNG PHẢI đợi
+// tới khi 1 kỳ Quý/6 Tháng/Năm kết thúc mới biết). Quy tắc (theo đúng yêu cầu người dùng):
+//  - Tháng: LUÔN lấy tháng hiện hành (kỳ CHƯA XONG cũng lấy — vì "chiết khấu tháng" vốn chốt theo tháng,
+//    không có kỳ nào khác để tạm dùng thay).
+//  - Quý/6 Tháng/Năm: lấy kỳ ĐÃ HOÀN TẤT gần nhất — tức kỳ TRƯỚC kỳ hiện hành — TRỪ KHI tháng hiện hành
+//    đúng là THÁNG CUỐI của kỳ đó (Quý: tháng 3/6/9/12; 6 Tháng: tháng 6/12; Năm: tháng 12), khi đó kỳ
+//    hiện hành coi như đã gần đủ dữ liệu nên dùng LUÔN kỳ hiện hành thay vì kỳ trước.
+// Test: xem 'resolveTamTinhPeriod_' trong runFormulaTests() — khoá đúng cả 4 quy tắc trên tại các mốc
+// tháng dễ sai nhất (đầu kỳ, cuối kỳ, vắt qua năm).
+function resolveTamTinhPeriod_(thoidiem, asOfISO){
+  const y = yearOfISO_(asOfISO), m = monthOfISO_(asOfISO); // m: 1..12
+  if(!y || !m || m<1 || m>12) return null;
+  if(thoidiem==='Tháng'){
+    return { from: toISO(new Date(y,m-1,1)), to: toISO(new Date(y,m,0)) };
+  }
+  if(thoidiem==='Quý'){
+    const qCur = Math.floor((m-1)/3); // 0..3 = quý chứa tháng hiện hành
+    let q = (m%3===0) ? qCur : qCur-1; // tháng cuối quý (3/6/9/12) -> dùng quý hiện hành, ngược lại lùi 1 quý
+    let yy = y;
+    if(q<0){ q = 3; yy = y-1; } // lùi qua quý 4 của năm trước
+    return { from: toISO(new Date(yy,q*3,1)), to: toISO(new Date(yy,q*3+3,0)) };
+  }
+  if(thoidiem==='6 Tháng'){
+    const hCur = m<=6 ? 0 : 1;
+    let h = (m===6||m===12) ? hCur : hCur-1;
+    let yy = y;
+    if(h<0){ h = 1; yy = y-1; }
+    return { from: toISO(new Date(yy,h*6,1)), to: toISO(new Date(yy,h*6+6,0)) };
+  }
+  if(thoidiem==='Năm'){
+    const yy = (m===12) ? y : y-1;
+    return { from: toISO(new Date(yy,0,1)), to: toISO(new Date(yy,11,31)) };
+  }
+  return null; // thời điểm không xác định (VD "Theo hiệu lực CTKM") -> không có kỳ tham chiếu chuẩn nào
+}
 // Cập nhật trực tiếp giá trị 2 ô ngày (KHÔNG render lại toàn trang) để không làm mất focus đang gõ
 function onReportThoidiemChange(){
   const thoidiem = document.getElementById('rf_thoidiem').value;
@@ -7473,6 +7622,374 @@ function renderReportResult(){
     </div>
   `;
 }
+
+/* ============================ BẢNG CHIẾT KHẤU TẠM TÍNH THEO THÁNG ============================ */
+// MỚI: khác với "Tính chiết khấu" (renderReport, tính CHÍNH THỨC cho đúng 1 kỳ ĐÃ CHỌN, dùng để lưu báo
+// cáo), màn này giúp biết TRƯỚC — ngay giữa tháng đang bán hàng — mức % chiết khấu ước tính đang áp dụng
+// cho từng mặt hàng, KHÔNG cần đợi Quý/6 Tháng/Năm kết thúc mới tính được. Cách làm: với mỗi loại "Thời
+// điểm chiết khấu" (Tháng/Quý/6 Tháng/Năm), xác định KỲ THAM CHIẾU đã (gần) hoàn tất theo đúng quy tắc ở
+// resolveTamTinhPeriod_(), tính % / bậc chiết khấu THỰC TẾ đã đạt được ở kỳ tham chiếu đó (dùng lại đúng
+// engine evaluateProgramForPeriod()/resolveEffectiveBac_() đã dùng cho "Tính chiết khấu" chính thức —
+// không viết lại công thức), rồi ÁP tỷ lệ đó lên đúng Sản lượng/Doanh số THÁNG HIỆN HÀNH của từng mặt
+// hàng để ra số tiền chiết khấu tạm tính. "Chiết khấu khác" (4 tháng liên tục/thưởng lũy kế) dùng lại
+// nguyên hàm computeBonusDiscount()/computeDualConditionBonus() đã có — vì các hàm này tự đối chiếu dữ
+// liệu ĐÃ LƯU ở REPORT_CKTH cho từng tháng cấu hình, nên nếu tháng nào chưa "Tính chiết khấu"+"Lưu báo
+// cáo" trước đó, phần lũy kế sẽ TỰ ĐỘNG ra 0đ (an toàn — không tự suy diễn có lợi) thay vì báo sai.
+const TAMTINH_CATS_ = [
+  { key:'ck_thang', label:'Chiết khấu tháng', thoidiem:'Tháng' },
+  { key:'ck_quy', label:'Chiết khấu quý', thoidiem:'Quý' },
+  { key:'ck_6thang', label:'Chiết khấu 1/2 năm', thoidiem:'6 Tháng' },
+  { key:'ck_nam', label:'Chiết khấu năm', thoidiem:'Năm' },
+];
+// Lõi tính toán — thuần dữ liệu (không đụng DOM), nhận asOfISO (mặc định hôm nay/"tháng áp dụng" người
+// dùng chọn) — trả về 1 dòng / mặt hàng có phát sinh mua hàng trong THÁNG HIỆN HÀNH (tháng chứa asOfISO).
+function computeTamTinhChietKhau_(asOfISO){
+  asOfISO = asOfISO || todayISO();
+  const y = yearOfISO_(asOfISO), m = monthOfISO_(asOfISO);
+  const monthStart = toISO(new Date(y, m-1, 1));
+  const monthEnd = toISO(new Date(y, m, 0));
+
+  const map = mhckMap();
+  const gcbMap = giaCongBoMap();
+
+  // BƯỚC 1: gom mua hàng THÁNG HIỆN HÀNH theo từng mã hàng (cùng cách computeReport() đã làm)
+  const skuAgg = {};
+  (DB.purchases||[]).forEach(p=>{
+    if(!p.ngay || p.ngay<monthStart || p.ngay>monthEnd) return;
+    const dims = lookupItemDims(p.mahang, map);
+    if(!dims.matched) return;
+    const key = norm(p.mahang);
+    if(!skuAgg[key]) skuAgg[key] = { mahang:p.mahang, tenhang:(map[key]&&map[key].tenhang)||p.tenhang||'', dims, sl:0, dt:0, cbGT:0, cbSL:0 };
+    const s = skuAgg[key];
+    const sl = Number(p.soluong)||0;
+    s.sl += sl;
+    s.dt += Number(p.giatri)||0;
+    const mhckRec = map[key];
+    const maMH = mhckRec ? mhckRec.mamh_ncc : '';
+    const gcb = maMH ? lookupGiaCongBo(maMH, p.ngay, gcbMap) : null;
+    if(gcb!=null){ s.cbGT += gcb*sl; s.cbSL += sl; }
+  });
+  const skus = Object.values(skuAgg);
+
+  // BƯỚC 2: với MỖI chương trình (Tầng 2), xác định % / bậc hiệu lực Ở KỲ THAM CHIẾU của đúng loại thời
+  // điểm của nó — chỉ 1 LẦN cho cả chương trình (không tính lại cho từng mã hàng), rồi cache lại.
+  const progsByCat = {};
+  TAMTINH_CATS_.forEach(c=>{ progsByCat[c.key] = (DB.programs||[]).filter(p=>p.thoidiem_ck===c.thoidiem); });
+  const progRefCache = new Map(); // program.id -> { dat, effective, ref }
+  function refForProgram_(prog, thoidiem){
+    if(progRefCache.has(prog.id)) return progRefCache.get(prog.id);
+    const ref = resolveTamTinhPeriod_(thoidiem, asOfISO);
+    let result;
+    if(!ref) result = { dat:false, effective:null, ref:null };
+    else {
+      const ev = evaluateProgramForPeriod(prog, ref.from, ref.to, '');
+      result = { dat: ev.dat, effective: ev.dat ? ev.effectiveProg : null, ref, totalSl: ev.totalSl, totalDt: ev.totalDt };
+    }
+    progRefCache.set(prog.id, result);
+    return result;
+  }
+  // "Chiết khấu khác" (lũy kế) — cache theo TỪNG chương trình lũy kế (không phải theo mã hàng)
+  const lkResultCache = new Map(); // luyke.id -> { rate, ht } | null
+  function refForLuyKe_(lk, baseProg){
+    if(lkResultCache.has(lk.id)) return lkResultCache.get(lk.id);
+    let result = null;
+    const thangList = String(lk.thang_luyke||'').split(',').map(Number).filter(Boolean);
+    const ref = thangList.length ? resolveTamTinhPeriod_(lk.thoidiem_ck, asOfISO) : null;
+    if(ref){
+      const bd = computeBonusDiscount(lk, thangList, lk.thoidiem_ck, ref.from, ref.to);
+      const dat = bd && bd.ok && (bd.kieu_tinh==='dual_condition' ? bd.finalDat : bd.allMonthsOk) && Number(bd.effectiveRatePct)>0;
+      if(dat) result = { rate: Number(bd.effectiveRatePct), ht: baseProg.ht_chietkhau };
+    }
+    lkResultCache.set(lk.id, result);
+    return result;
+  }
+
+  const rows = skus.map(s=>{
+    const giaMuaTB = giaMuaBinhQuan(s.sl, s.dt);
+    const giaCongBoTB = s.cbSL ? s.cbGT/s.cbSL : 0;
+    const dtGiaCongBo = s.cbGT; // giá trị ĐÃ khớp giá công bố thực tế trong tháng (không phải sl × BQ)
+    const catAmt = {}; const catDetail = [];
+    TAMTINH_CATS_.forEach(c=>{
+      let amt = 0;
+      progsByCat[c.key].forEach(prog=>{
+        const pd = {thuonghieu:prog.dim_thuonghieu,nhomkh:prog.dim_nhomkh,loaisp:prog.dim_loaisp,dactinh:prog.dim_dactinh,congdung:prog.dim_congdung,quycach:prog.dim_quycach};
+        if(!dimsMatch(s.dims, pd)) return;
+        const r = refForProgram_(prog, c.thoidiem);
+        if(!r.dat || !r.effective) return;
+        const a = calcDiscountForProgram(r.effective, s.sl, s.dt, giaCongBoTB);
+        amt += a;
+        catDetail.push({ loai:c.label, ma_chietkhau:prog.ma_chietkhau, ky_thamchieu:r.ref, tl_ck:r.effective.tl_ck, tienck:a });
+      });
+      catAmt[c.key] = amt;
+    });
+    let ckKhac = 0; const khacDetail = [];
+    (DB.programsLuyKe||[]).forEach(lk=>{
+      const baseProg = (DB.programs||[]).find(p=>p.id===lk.ma_ck_chinh);
+      if(!baseProg) return;
+      const pd = {thuonghieu:baseProg.dim_thuonghieu,nhomkh:baseProg.dim_nhomkh,loaisp:baseProg.dim_loaisp,dactinh:baseProg.dim_dactinh,congdung:baseProg.dim_congdung,quycach:baseProg.dim_quycach};
+      if(!dimsMatch(s.dims, pd)) return;
+      const r = refForLuyKe_(lk, baseProg);
+      if(!r) return;
+      const a = calcAmountByHt_(r.ht, s.sl, s.dt, giaCongBoTB, r.rate/100);
+      ckKhac += a;
+      khacDetail.push({ ma_luyke: baseProg.ma_chietkhau, tl_ck:r.rate, tienck:a });
+    });
+
+    const tongTienCK = catAmt.ck_thang + catAmt.ck_quy + catAmt.ck_6thang + catAmt.ck_nam + ckKhac;
+    return {
+      mahang: s.mahang, tenhang: s.tenhang, dims: s.dims,
+      sl: s.sl, dt: s.dt, dtGiaCongBo, giaMuaTB, giaCongBoTB,
+      ck_thang: catAmt.ck_thang, ck_quy: catAmt.ck_quy, ck_6thang: catAmt.ck_6thang, ck_nam: catAmt.ck_nam,
+      ck_khac: ckKhac, tongTienCK,
+      pctGiaCongBo: dtGiaCongBo ? tongTienCK/dtGiaCongBo*100 : null,
+      pctGiaMua: s.dt ? tongTienCK/s.dt*100 : null,
+      catDetail, khacDetail
+    };
+  }).sort((a,b)=>b.tongTienCK-a.tongTienCK);
+
+  return {
+    asOfISO, monthStart, monthEnd, rows,
+    catRefPeriods: TAMTINH_CATS_.map(c=>({ key:c.key, label:c.label, ref: resolveTamTinhPeriod_(c.thoidiem, asOfISO) }))
+  };
+}
+// BÁO CÁO 1 — Tổng hợp theo Nhóm hàng + Thương hiệu (nhóm 2 chiều theo yêu cầu người dùng)
+function buildTamTinhTongHop_(computed){
+  const groups = {};
+  computed.rows.forEach(r=>{
+    const nhomkh = r.dims.nhomkh || 'NO', thuonghieu = r.dims.thuonghieu || 'NO';
+    const key = nhomkh+'||'+thuonghieu;
+    if(!groups[key]) groups[key] = {
+      nhomkh, thuonghieu, soMaHang:0, sl:0, dt:0, dtGiaCongBo:0,
+      ck_thang:0, ck_quy:0, ck_6thang:0, ck_nam:0, ck_khac:0, tongTienCK:0
+    };
+    const g = groups[key];
+    g.soMaHang++;
+    g.sl+=r.sl; g.dt+=r.dt; g.dtGiaCongBo+=r.dtGiaCongBo;
+    g.ck_thang+=r.ck_thang; g.ck_quy+=r.ck_quy; g.ck_6thang+=r.ck_6thang; g.ck_nam+=r.ck_nam; g.ck_khac+=r.ck_khac;
+    g.tongTienCK+=r.tongTienCK;
+  });
+  return Object.values(groups).map(g=>Object.assign({}, g, {
+    nhomkhTen: dimName('nhomkh', g.nhomkh), thuonghieuTen: dimName('thuonghieu', g.thuonghieu),
+    pctGiaCongBo: g.dtGiaCongBo ? g.tongTienCK/g.dtGiaCongBo*100 : null,
+    pctGiaMua: g.dt ? g.tongTienCK/g.dt*100 : null
+  })).sort((a,b)=>b.tongTienCK-a.tongTienCK);
+}
+
+function renderTamTinh(){
+  document.getElementById('topbarActions').innerHTML = `
+    <button class="btn btn-primary" id="btnExportTamTinh" ${UI._tamTinhResult?'':'disabled'}>${ICON.download} Xuất Excel</button>
+  `;
+  document.getElementById('btnExportTamTinh').onclick = exportTamTinhXlsx;
+
+  if(!UI._tamTinhFilters) UI._tamTinhFilters = { thang: todayISO().slice(0,7) }; // "yyyy-mm", mặc định tháng hiện hành
+  if(!UI._tamTinhView) UI._tamTinhView = 'tonghop';
+  const tf = UI._tamTinhFilters;
+
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <div class="card-head"><div><h2>Chọn tháng áp dụng</h2><div class="hint">Mặc định là tháng hiện hành — dùng để xác định "Doanh số mua tháng này" và tự tìm đúng kỳ tham chiếu (Quý/6 Tháng/Năm) theo quy tắc đã thống nhất</div></div></div>
+      <div class="grid grid-4">
+        <div class="field" style="margin:0"><label>Tháng áp dụng</label><input type="month" id="tt_thang" value="${tf.thang}"></div>
+        <div class="field" style="margin:0;display:flex;align-items:flex-end">
+          <button class="btn btn-primary btn-sm" onclick="runTamTinh()">${ICON.calc} Tính tạm tính</button>
+        </div>
+      </div>
+    </div>
+    <div id="tamTinhResultWrap"></div>
+  `;
+  if(UI._tamTinhResult) renderTamTinhResult(); else document.getElementById('tamTinhResultWrap').innerHTML =
+    `<div class="card"><div class="empty"><div class="big">🧮</div>Bấm <b>Tính tạm tính</b> để xem bảng chiết khấu tạm tính của tháng đã chọn.</div></div>`;
+}
+function runTamTinh(){
+  const thang = document.getElementById('tt_thang').value;
+  if(!thang){ toast('Vui lòng chọn tháng áp dụng','err'); return; }
+  UI._tamTinhFilters = { thang };
+  UI._tamTinhResult = computeTamTinhChietKhau_(thang);
+  renderTamTinhResult();
+}
+window.runTamTinh = runTamTinh;
+function setTamTinhView(v){ UI._tamTinhView = v; renderTamTinhResult(); }
+window.setTamTinhView = setTamTinhView;
+function renderTamTinhResult(){
+  const res = UI._tamTinhResult;
+  const wrap = document.getElementById('tamTinhResultWrap');
+  if(!res || !wrap) return;
+  const refLine = res.catRefPeriods.map(c=>`<span class="tag">${esc(c.label)}: ${c.ref?`${fmtDate(c.ref.from)}→${fmtDate(c.ref.to)}`:'—'}</span>`).join(' ');
+  wrap.innerHTML = `
+    <div class="section-note">Tháng áp dụng (doanh số mua dùng để tạm tính): <b>${fmtDate(res.monthStart)} → ${fmtDate(res.monthEnd)}</b>. Kỳ tham chiếu lấy % từng loại chiết khấu: ${refLine}</div>
+    <div class="tabs2" style="margin-bottom:12px">
+      <div class="tab2 ${UI._tamTinhView==='tonghop'?'active':''}" onclick="setTamTinhView('tonghop')">Tổng hợp theo Nhóm hàng/Thương hiệu</div>
+      <div class="tab2 ${UI._tamTinhView==='chitiet'?'active':''}" onclick="setTamTinhView('chitiet')">Chi tiết theo mặt hàng</div>
+    </div>
+    <div id="tamTinhViewBody"></div>
+  `;
+  if(UI._tamTinhView==='chitiet') renderTamTinhChiTiet_(res); else renderTamTinhTongHop_(res);
+}
+function renderTamTinhTongHop_(res){
+  const groups = buildTamTinhTongHop_(res);
+  const totalCK = groups.reduce((s,g)=>s+g.tongTienCK,0);
+  const totalDT = groups.reduce((s,g)=>s+g.dt,0);
+  const totalDTCB = groups.reduce((s,g)=>s+g.dtGiaCongBo,0);
+  document.getElementById('tamTinhViewBody').innerHTML = `
+    <div class="grid grid-4">
+      <div class="kpi"><div class="lbl">Doanh số mua tháng</div><div class="val">${fmtVND(totalDT)}</div></div>
+      <div class="kpi"><div class="lbl">Doanh số theo giá công bố</div><div class="val">${fmtVND(totalDTCB)}</div></div>
+      <div class="kpi accent-emerald"><div class="lbl">Tổng CK tạm tính</div><div class="val">${fmtVND(totalCK)}</div></div>
+      <div class="kpi"><div class="lbl">% CK / giá mua</div><div class="val">${fmtPct(totalDT?totalCK/totalDT*100:0)}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h2>Tổng hợp theo Nhóm hàng + Thương hiệu</h2><div class="hint">${groups.length} nhóm</div></div></div>
+      ${groups.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Nhóm hàng</th><th>Thương hiệu</th><th class="num">Số mã hàng</th><th class="num">Doanh số mua</th><th class="num">Doanh số giá công bố</th><th class="num">CK tháng</th><th class="num">CK quý</th><th class="num">CK 1/2 năm</th><th class="num">CK năm</th><th class="num">CK khác</th><th class="num">Tổng tiền CK</th><th class="num">%CK/giá CB</th><th class="num">%CK/giá mua</th></tr></thead>
+        <tbody>${groups.map(g=>`<tr>
+          <td>${esc(g.nhomkhTen)}</td><td>${esc(g.thuonghieuTen)}</td><td class="num mono">${fmtNum(g.soMaHang)}</td>
+          <td class="num mono">${fmtVND(g.dt)}</td><td class="num mono">${fmtVND(g.dtGiaCongBo)}</td>
+          <td class="num mono">${fmtVND(g.ck_thang)}</td><td class="num mono">${fmtVND(g.ck_quy)}</td>
+          <td class="num mono">${fmtVND(g.ck_6thang)}</td><td class="num mono">${fmtVND(g.ck_nam)}</td>
+          <td class="num mono">${fmtVND(g.ck_khac)}</td>
+          <td class="num mono" style="color:var(--emerald-dark);font-weight:700">${fmtVND(g.tongTienCK)}</td>
+          <td class="num mono">${g.pctGiaCongBo!=null?fmtPct(g.pctGiaCongBo):'—'}</td>
+          <td class="num mono">${g.pctGiaMua!=null?fmtPct(g.pctGiaMua):'—'}</td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr style="font-weight:700;background:var(--slate-50)">
+          <td colspan="3">TỔNG CỘNG</td><td class="num mono">${fmtVND(totalDT)}</td><td class="num mono">${fmtVND(totalDTCB)}</td>
+          <td class="num mono">${fmtVND(groups.reduce((s,g)=>s+g.ck_thang,0))}</td>
+          <td class="num mono">${fmtVND(groups.reduce((s,g)=>s+g.ck_quy,0))}</td>
+          <td class="num mono">${fmtVND(groups.reduce((s,g)=>s+g.ck_6thang,0))}</td>
+          <td class="num mono">${fmtVND(groups.reduce((s,g)=>s+g.ck_nam,0))}</td>
+          <td class="num mono">${fmtVND(groups.reduce((s,g)=>s+g.ck_khac,0))}</td>
+          <td class="num mono" style="color:var(--emerald-dark)">${fmtVND(totalCK)}</td>
+          <td class="num mono">${totalDTCB?fmtPct(totalCK/totalDTCB*100):'—'}</td>
+          <td class="num mono">${totalDT?fmtPct(totalCK/totalDT*100):'—'}</td>
+        </tr></tfoot>
+      </table></div>` : `<div class="empty">Không có mã hàng nào phát sinh mua trong tháng đã chọn.</div>`}
+    </div>
+  `;
+}
+function renderTamTinhChiTiet_(res){
+  const rows = res.rows;
+  document.getElementById('tamTinhViewBody').innerHTML = `
+    <div class="card">
+      <div class="card-head"><div><h2>Chi tiết theo mặt hàng</h2><div class="hint">${rows.length} mã hàng phát sinh mua trong tháng — bấm "Tổng tiền CK" để xem chi tiết từng khoản</div></div></div>
+      ${rows.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Mã hàng</th><th>Tên hàng</th><th class="num">Doanh số mua</th><th class="num">Doanh số giá công bố</th><th class="num">CK tháng</th><th class="num">CK quý</th><th class="num">CK 1/2 năm</th><th class="num">CK năm</th><th class="num">CK khác</th><th class="num">Tổng %CK/giá CB</th><th class="num">%CK/giá mua</th><th class="num">Số tiền CK tạm tính</th></tr></thead>
+        <tbody>${rows.map((r,i)=>`<tr style="cursor:pointer" onclick="showTamTinhSkuDetail_(${i})">
+          <td class="mono">${esc(r.mahang)}</td><td>${esc(r.tenhang)}</td>
+          <td class="num mono">${fmtVND(r.dt)}</td><td class="num mono">${fmtVND(r.dtGiaCongBo)}</td>
+          <td class="num mono">${fmtVND(r.ck_thang)}</td><td class="num mono">${fmtVND(r.ck_quy)}</td>
+          <td class="num mono">${fmtVND(r.ck_6thang)}</td><td class="num mono">${fmtVND(r.ck_nam)}</td>
+          <td class="num mono">${fmtVND(r.ck_khac)}</td>
+          <td class="num mono">${r.pctGiaCongBo!=null?fmtPct(r.pctGiaCongBo):'—'}</td>
+          <td class="num mono">${r.pctGiaMua!=null?fmtPct(r.pctGiaMua):'—'}</td>
+          <td class="num mono" style="color:var(--emerald-dark);font-weight:700">${fmtVND(r.tongTienCK)}</td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr style="font-weight:700;background:var(--slate-50)">
+          <td colspan="2">TỔNG CỘNG</td><td class="num mono">${fmtVND(rows.reduce((s,r)=>s+r.dt,0))}</td><td class="num mono">${fmtVND(rows.reduce((s,r)=>s+r.dtGiaCongBo,0))}</td>
+          <td class="num mono">${fmtVND(rows.reduce((s,r)=>s+r.ck_thang,0))}</td>
+          <td class="num mono">${fmtVND(rows.reduce((s,r)=>s+r.ck_quy,0))}</td>
+          <td class="num mono">${fmtVND(rows.reduce((s,r)=>s+r.ck_6thang,0))}</td>
+          <td class="num mono">${fmtVND(rows.reduce((s,r)=>s+r.ck_nam,0))}</td>
+          <td class="num mono">${fmtVND(rows.reduce((s,r)=>s+r.ck_khac,0))}</td>
+          <td></td><td></td>
+          <td class="num mono" style="color:var(--emerald-dark)">${fmtVND(rows.reduce((s,r)=>s+r.tongTienCK,0))}</td>
+        </tr></tfoot>
+      </table></div>` : `<div class="empty">Không có mã hàng nào phát sinh mua trong tháng đã chọn.</div>`}
+    </div>
+  `;
+}
+function showTamTinhSkuDetail_(i){
+  const res = UI._tamTinhResult;
+  if(!res) return;
+  const r = res.rows[i];
+  if(!r) return;
+  const all = (r.catDetail||[]).concat((r.khacDetail||[]).map(d=>Object.assign({loai:'Chiết khấu khác', ma_chietkhau:d.ma_luyke},d)));
+  openModal(`
+    <h3>${esc(r.mahang)} — ${esc(r.tenhang)}</h3>
+    <div class="section-note">Doanh số mua tháng: <b>${fmtVND(r.dt)}</b> · Doanh số giá công bố: <b>${fmtVND(r.dtGiaCongBo)}</b></div>
+    ${all.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Loại</th><th>Mã chiết khấu</th><th>Kỳ tham chiếu lấy %</th><th class="num">Tỷ lệ</th><th class="num">Tiền CK tạm tính</th></tr></thead>
+      <tbody>${all.map(d=>`<tr>
+        <td>${esc(d.loai)}</td><td class="mono">${esc(d.ma_chietkhau||'')}</td>
+        <td>${d.ky_thamchieu?`${fmtDate(d.ky_thamchieu.from)}→${fmtDate(d.ky_thamchieu.to)}`:'—'}</td>
+        <td class="num mono">${d.tl_ck!=null?fmtPct(d.tl_ck):'—'}</td>
+        <td class="num mono">${fmtVND(d.tienck)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : `<div class="empty">Mặt hàng này chưa khớp chương trình chiết khấu nào ở kỳ tham chiếu.</div>`}
+    <div class="btn-row" style="justify-content:flex-end;margin-top:10px"><button class="btn btn-primary" onclick="closeModal()">Đóng</button></div>
+  `, {wide:true});
+}
+window.showTamTinhSkuDetail_ = showTamTinhSkuDetail_;
+function exportTamTinhXlsx(){
+  const res = UI._tamTinhResult;
+  if(!res){ toast('Chưa có dữ liệu tạm tính để xuất','err'); return; }
+  const groups = buildTamTinhTongHop_(res);
+  const rows = res.rows;
+
+  const COLS1 = ['Nhóm hàng','Thương hiệu','Số mã hàng','Doanh số mua','Doanh số giá công bố','CK tháng','CK quý','CK 1/2 năm','CK năm','CK khác','Tổng tiền CK','%CK/giá công bố','%CK/giá mua'];
+  const out1 = groups.map(g=>({
+    'Nhóm hàng': g.nhomkhTen, 'Thương hiệu': g.thuonghieuTen, 'Số mã hàng': g.soMaHang,
+    'Doanh số mua': g.dt, 'Doanh số giá công bố': g.dtGiaCongBo,
+    'CK tháng': g.ck_thang, 'CK quý': g.ck_quy, 'CK 1/2 năm': g.ck_6thang, 'CK năm': g.ck_nam, 'CK khác': g.ck_khac,
+    'Tổng tiền CK': g.tongTienCK,
+    '%CK/giá công bố': g.pctGiaCongBo!=null?Number(g.pctGiaCongBo.toFixed(2)):'',
+    '%CK/giá mua': g.pctGiaMua!=null?Number(g.pctGiaMua.toFixed(2)):''
+  }));
+  const total1 = groups.reduce((s,g)=>s+g.tongTienCK,0);
+  const totalRow1 = out1.length;
+  out1.push({ 'Nhóm hàng':'TỔNG CỘNG', 'Số mã hàng': groups.reduce((s,g)=>s+g.soMaHang,0),
+    'Doanh số mua': groups.reduce((s,g)=>s+g.dt,0), 'Doanh số giá công bố': groups.reduce((s,g)=>s+g.dtGiaCongBo,0),
+    'CK tháng': groups.reduce((s,g)=>s+g.ck_thang,0), 'CK quý': groups.reduce((s,g)=>s+g.ck_quy,0),
+    'CK 1/2 năm': groups.reduce((s,g)=>s+g.ck_6thang,0), 'CK năm': groups.reduce((s,g)=>s+g.ck_nam,0),
+    'CK khác': groups.reduce((s,g)=>s+g.ck_khac,0), 'Tổng tiền CK': total1 });
+  const ws1 = XLSX.utils.json_to_sheet(out1, {header: COLS1});
+  const colFmt1 = new Array(COLS1.length).fill(null);
+  ['Số mã hàng','Doanh số mua','Doanh số giá công bố','CK tháng','CK quý','CK 1/2 năm','CK năm','CK khác','Tổng tiền CK'].forEach(h=>colFmt1[COLS1.indexOf(h)]='#,##0');
+  ['%CK/giá công bố','%CK/giá mua'].forEach(h=>colFmt1[COLS1.indexOf(h)]='0.00"%"');
+  xbStyleHeaderRow_(ws1, 0, COLS1.length);
+  xbStyleDataRange_(ws1, 1, out1.length, COLS1.length, colFmt1, (r)=> (r-1===totalRow1) ? { rowStyle: XB_S_.total } : null);
+  xbSetCols_(ws1, [16,14,12,16,18,14,14,14,14,14,16,14,14]);
+
+  const COLS2 = ['Mã hàng','Tên hàng','Doanh số mua','Doanh số giá công bố','CK tháng','CK quý','CK 1/2 năm','CK năm','CK khác','Tổng %CK/giá công bố','%CK/giá mua','Số tiền CK tạm tính'];
+  const out2 = rows.map(r=>({
+    'Mã hàng': r.mahang, 'Tên hàng': r.tenhang, 'Doanh số mua': r.dt, 'Doanh số giá công bố': r.dtGiaCongBo,
+    'CK tháng': r.ck_thang, 'CK quý': r.ck_quy, 'CK 1/2 năm': r.ck_6thang, 'CK năm': r.ck_nam, 'CK khác': r.ck_khac,
+    'Tổng %CK/giá công bố': r.pctGiaCongBo!=null?Number(r.pctGiaCongBo.toFixed(2)):'',
+    '%CK/giá mua': r.pctGiaMua!=null?Number(r.pctGiaMua.toFixed(2)):'',
+    'Số tiền CK tạm tính': r.tongTienCK
+  }));
+  const total2 = rows.reduce((s,r)=>s+r.tongTienCK,0);
+  const totalRow2 = out2.length;
+  out2.push({ 'Mã hàng':'TỔNG CỘNG', 'Doanh số mua': rows.reduce((s,r)=>s+r.dt,0), 'Doanh số giá công bố': rows.reduce((s,r)=>s+r.dtGiaCongBo,0),
+    'CK tháng': rows.reduce((s,r)=>s+r.ck_thang,0), 'CK quý': rows.reduce((s,r)=>s+r.ck_quy,0),
+    'CK 1/2 năm': rows.reduce((s,r)=>s+r.ck_6thang,0), 'CK năm': rows.reduce((s,r)=>s+r.ck_nam,0),
+    'CK khác': rows.reduce((s,r)=>s+r.ck_khac,0), 'Số tiền CK tạm tính': total2 });
+  const ws2 = XLSX.utils.json_to_sheet(out2, {header: COLS2});
+  const colFmt2 = new Array(COLS2.length).fill(null);
+  ['Doanh số mua','Doanh số giá công bố','CK tháng','CK quý','CK 1/2 năm','CK năm','CK khác','Số tiền CK tạm tính'].forEach(h=>colFmt2[COLS2.indexOf(h)]='#,##0');
+  ['Tổng %CK/giá công bố','%CK/giá mua'].forEach(h=>colFmt2[COLS2.indexOf(h)]='0.00"%"');
+  xbStyleHeaderRow_(ws2, 0, COLS2.length);
+  xbStyleDataRange_(ws2, 1, out2.length, COLS2.length, colFmt2, (r)=> (r-1===totalRow2) ? { rowStyle: XB_S_.total } : null);
+  xbSetCols_(ws2, [14,30,16,18,14,14,14,14,14,16,14,18]);
+
+  const wsTongQuan = buildSimpleKpiSheet_('BẢNG CHIẾT KHẤU TẠM TÍNH THEO THÁNG',
+    [['Tháng áp dụng', `${fmtDate(res.monthStart)} → ${fmtDate(res.monthEnd)}`]].concat(
+      res.catRefPeriods.map(c=>[`Kỳ tham chiếu — ${c.label}`, c.ref?`${fmtDate(c.ref.from)} → ${fmtDate(c.ref.to)}`:'—'])
+    ),
+    [
+      { label:'Số mã hàng phát sinh mua trong tháng', value: rows.length, kind:'kvnum' },
+      { label:'Tổng doanh số mua (đ)', value: rows.reduce((s,r)=>s+r.dt,0), kind:'kvnum' },
+      { label:'Tổng doanh số theo giá công bố (đ)', value: rows.reduce((s,r)=>s+r.dtGiaCongBo,0), kind:'kvnum' },
+      { label:'Tổng số tiền chiết khấu tạm tính (đ)', value: total2, kind:'kvnum-gold' },
+    ]);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsTongQuan, 'TongQuan');
+  XLSX.utils.book_append_sheet(wb, ws1, 'TongHop_NhomHang_ThuongHieu');
+  XLSX.utils.book_append_sheet(wb, ws2, 'ChiTiet_MatHang');
+  downloadWb(wb, `ChietKhauTamTinh_${res.monthStart.slice(0,7)}.xlsx`);
+  toast('Đã xuất bảng chiết khấu tạm tính','ok');
+}
+window.exportTamTinhXlsx = exportTamTinhXlsx;
 
 /* ============================ IMPORT / EXPORT UTILS ============================ */
 function triggerFileImport(handler){
