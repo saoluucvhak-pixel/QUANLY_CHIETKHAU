@@ -1574,6 +1574,21 @@ function runFormulaTests(){
       assertClose(groups4[0].ck_coban, 200000, 'tổng nhóm phải khớp CK cơ bản của dòng chi tiết duy nhất');
       assertClose(groups4[0].tongTienCKFull, 200000);
     });
+    test('computeTamTinhChietKhau_: mặt hàng THIẾU giá công bố -> tạm dùng giá mua bình quân + đánh dấu canhBaoGiaCongBo/ghiChuGiaCongBo', ()=>{
+      DB.catalog = {
+        mhck: [ { mamh:'SP002', mamh_ncc:'MAMH02', tenhang:'Lốp Casu 002', thuonghieu:'CASU', nhomkh:'GRP1', loaisp:'NO', dactinh:'NO', congdung:'NO', quycach:'NO' } ],
+        giacongbo: [] // KHÔNG khai giá công bố cho MAMH02 -> s.cbSL sẽ = 0 cho SP002
+      };
+      DB.purchases = [ { ngay:'2026-08-10', mahang:'SP002', soluong:50, giatri:500000, nhacungcap:'NCC A' } ];
+      DB.programs = [];
+      const res = computeTamTinhChietKhau_('2026-08-20');
+      const row = res.rows.find(r=>r.mahang==='SP002');
+      assertTrue(!!row);
+      assertTrue(row.canhBaoGiaCongBo, 'phải đánh dấu cảnh báo vì không có giá công bố nào khớp được');
+      assertTrue(!!row.ghiChuGiaCongBo, 'phải có ghi chú giải thích lý do');
+      assertEqual(row.dtGiaCongBo, row.dt, 'thiếu giá công bố -> Doanh số giá công bố phải TẠM lấy đúng bằng Doanh số giá mua (giá trung bình hóa đơn)');
+      assertEqual(row.ck_coban, 0, 'không tự suy diễn CK cơ bản khi thiếu dữ liệu thật -> phải = 0, không phải số âm');
+    });
   } finally {
     DB = dbBackupTamTinh;
   }
@@ -7732,7 +7747,18 @@ function computeTamTinhChietKhau_(asOfISO){
   const rows = skus.map(s=>{
     const giaMuaTB = giaMuaBinhQuan(s.sl, s.dt);
     const giaCongBoTB = s.cbSL ? s.cbGT/s.cbSL : 0;
-    const dtGiaCongBo = s.cbGT; // giá trị ĐÃ khớp giá công bố thực tế trong tháng (không phải sl × BQ)
+    // SỬA (theo yêu cầu — mặt hàng KHÔNG CÓ/THIẾU giá công bố cho toàn bộ SL tháng này): trước đây
+    // dtGiaCongBo luôn lấy đúng s.cbGT (giá trị THẬT đã khớp được giá công bố) — nếu mặt hàng chưa khai
+    // Giá công bố NCC (hoặc chỉ khai 1 phần), s.cbGT ra 0 hoặc bị THIẾU, khiến "Doanh số giá công bố" và
+    // "CK cơ bản" (= Doanh số giá công bố − Doanh số giá mua, xem Báo cáo 4) ra sai/âm vô lý. Nay: nếu
+    // KHÔNG đủ giá công bố cho toàn bộ sản lượng tháng này (coGiaCongBoDayDu=false, cùng quy tắc đã dùng ở
+    // tinhHoanThanhKH_/chonDoanhSoGiaCongBo_ phía trên), TẠM dùng chính Doanh số giá mua (giá trung bình
+    // hóa đơn) làm "Doanh số giá công bố" — coi như CK cơ bản = 0đ (không tự suy diễn có lợi/bất lợi) —
+    // và đánh dấu canhBaoGiaCongBo=true + ghiChuGiaCongBo để hiển thị rõ ở cột "Ghi chú" (Báo cáo 4),
+    // tránh người xem hiểu nhầm là mặt hàng này có CK cơ bản âm hoặc bằng 0 một cách "thật".
+    const coGiaCongBoDayDu = s.sl>0 && s.cbSL>=s.sl-1e-6;
+    const dtGiaCongBo = coGiaCongBoDayDu ? s.cbGT : s.dt; // giá trị ĐÃ khớp giá công bố thực tế, hoặc tạm dùng giá mua nếu thiếu
+    const ghiChuGiaCongBo = coGiaCongBoDayDu ? '' : 'Chưa có đủ giá công bố cho mã hàng này trong tháng — tạm dùng giá mua bình quân thay giá công bố (CK cơ bản tạm tính = 0đ)';
     const catAmt = {}; const catDetail = [];
     TAMTINH_CATS_.forEach(c=>{
       let amt = 0;
@@ -7775,6 +7801,7 @@ function computeTamTinhChietKhau_(asOfISO){
       tongTienCKFull, pctGiaCongBoFull: dtGiaCongBo ? tongTienCKFull/dtGiaCongBo*100 : null,
       pctGiaCongBo: dtGiaCongBo ? tongTienCK/dtGiaCongBo*100 : null,
       pctGiaMua: s.dt ? tongTienCK/s.dt*100 : null,
+      canhBaoGiaCongBo: !coGiaCongBoDayDu, ghiChuGiaCongBo,
       catDetail, khacDetail
     };
   }).sort((a,b)=>b.tongTienCK-a.tongTienCK);
@@ -7833,24 +7860,48 @@ function buildTamTinhTheoGiaCongBo_(computed){
   })).sort((a,b)=> (a.nhomkh+a.thuonghieu).localeCompare(b.nhomkh+b.thuonghieu));
 }
 
+// SỬA LỖI (rà soát theo phản ánh người dùng "chọn ngày tháng không ổn"): trước đây dùng <input type="month">
+// — kiểu input này hiển thị/gõ không nhất quán giữa các trình duyệt (định dạng theo ngôn ngữ hệ điều hành,
+// khó gõ tay). Nay đổi sang 2 <select> Tháng/Năm riêng biệt, cùng khuôn mẫu THANG_OPTIONS đã dùng ở các
+// màn khác trong app (VD Chiết khấu lũy kế) — bấm chọn trực tiếp, không phụ thuộc trình duyệt.
+const TAMTINH_NAM_OPTIONS_ = (()=>{ const y = new Date().getFullYear(); const arr=[]; for(let i=y+1;i>=y-4;i--) arr.push(i); return arr; })();
 function renderTamTinh(){
+  if(!UI._tamTinhFilters){
+    const now = new Date();
+    UI._tamTinhFilters = { thang: now.getMonth()+1, nam: now.getFullYear(), nhomkh:'', thuonghieu:'' };
+  }
+  if(!UI._tamTinhView) UI._tamTinhView = 'tonghop';
+  const tf = UI._tamTinhFilters;
+
+  // SỬA LỖI (rà soát: "kết xuất Excel bị ẩn"): trước đây nút Xuất Excel chỉ được BẬT/TẮT đúng 1 lần khi
+  // renderTamTinh() (render toàn trang) chạy — runTamTinh() sau đó chỉ vẽ lại phần kết quả
+  // (renderTamTinhResult), KHÔNG vẽ lại topbarActions, nên nút luôn kẹt ở trạng thái "disabled" như lúc
+  // mở tab dù đã tính xong. Nay runTamTinh() gọi lại renderTamTinh() (vẽ lại toàn bộ, gồm cả nút) — đúng
+  // cách renderReport()/runReport() (tab "Tính chiết khấu") đã làm.
   document.getElementById('topbarActions').innerHTML = `
     <button class="btn btn-primary" id="btnExportTamTinh" ${UI._tamTinhResult?'':'disabled'}>${ICON.download} Xuất Excel</button>
   `;
   document.getElementById('btnExportTamTinh').onclick = exportTamTinhXlsx;
 
-  if(!UI._tamTinhFilters) UI._tamTinhFilters = { thang: todayISO().slice(0,7) }; // "yyyy-mm", mặc định tháng hiện hành
-  if(!UI._tamTinhView) UI._tamTinhView = 'tonghop';
-  const tf = UI._tamTinhFilters;
-
   document.getElementById('content').innerHTML = `
     <div class="card">
-      <div class="card-head"><div><h2>Chọn tháng áp dụng</h2><div class="hint">Mặc định là tháng hiện hành — dùng để xác định "Doanh số mua tháng này" và tự tìm đúng kỳ tham chiếu (Quý/6 Tháng/Năm) theo quy tắc đã thống nhất</div></div></div>
+      <div class="card-head"><div><h2>Chọn tháng áp dụng &amp; bộ lọc</h2><div class="hint">Mặc định là tháng hiện hành — dùng để xác định "Doanh số mua tháng này" và tự tìm đúng kỳ tham chiếu (Quý/6 Tháng/Năm) theo quy tắc đã thống nhất</div></div></div>
       <div class="grid grid-4">
-        <div class="field" style="margin:0"><label>Tháng áp dụng</label><input type="month" id="tt_thang" value="${tf.thang}"></div>
-        <div class="field" style="margin:0;display:flex;align-items:flex-end">
-          <button class="btn btn-primary btn-sm" onclick="runTamTinh()">${ICON.calc} Tính tạm tính</button>
+        <div class="field" style="margin:0"><label>Tháng áp dụng</label>
+          <select id="tt_thang">${THANG_OPTIONS.map(m=>`<option value="${m}" ${Number(tf.thang)===m?'selected':''}>Tháng ${m}</option>`).join('')}</select>
         </div>
+        <div class="field" style="margin:0"><label>Năm</label>
+          <select id="tt_nam">${TAMTINH_NAM_OPTIONS_.map(y=>`<option value="${y}" ${Number(tf.nam)===y?'selected':''}>${y}</option>`).join('')}</select>
+        </div>
+        <div class="field" style="margin:0"><label>Nhóm hàng</label>
+          <select id="tt_nhomkh"><option value="">Tất cả</option>${DB.catalog.nhomkh.map(o=>`<option value="${esc(o.ma)}" ${tf.nhomkh===o.ma?'selected':''}>${esc(o.ma)} — ${esc(o.ten)}</option>`).join('')}</select>
+        </div>
+        <div class="field" style="margin:0"><label>Thương hiệu</label>
+          <select id="tt_thuonghieu"><option value="">Tất cả</option>${DB.catalog.thuonghieu.map(o=>`<option value="${esc(o.ma)}" ${tf.thuonghieu===o.ma?'selected':''}>${esc(o.ma)} — ${esc(o.ten)}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:12px;justify-content:flex-end">
+        <button class="btn btn-primary btn-sm" onclick="runTamTinh()">${ICON.calc} Tính tạm tính</button>
       </div>
     </div>
     <div id="tamTinhResultWrap"></div>
@@ -7859,11 +7910,22 @@ function renderTamTinh(){
     `<div class="card"><div class="empty"><div class="big">🧮</div>Bấm <b>Tính tạm tính</b> để xem bảng chiết khấu tạm tính của tháng đã chọn.</div></div>`;
 }
 function runTamTinh(){
-  const thang = document.getElementById('tt_thang').value;
-  if(!thang){ toast('Vui lòng chọn tháng áp dụng','err'); return; }
-  UI._tamTinhFilters = { thang };
-  UI._tamTinhResult = computeTamTinhChietKhau_(thang);
-  renderTamTinhResult();
+  const thang = Number(document.getElementById('tt_thang').value);
+  const nam = Number(document.getElementById('tt_nam').value);
+  const nhomkh = document.getElementById('tt_nhomkh').value;
+  const thuonghieu = document.getElementById('tt_thuonghieu').value;
+  UI._tamTinhFilters = { thang, nam, nhomkh, thuonghieu };
+  const asOfISO = `${nam}-${String(thang).padStart(2,'0')}`;
+  const computed = computeTamTinhChietKhau_(asOfISO);
+  // Bộ lọc Nhóm hàng/Thương hiệu (theo yêu cầu — trước đây không có cách nào thu hẹp bảng theo nhóm):
+  // áp dụng NGAY sau khi tính, trước khi hiển thị/xuất Excel — cả 3 view (Tổng hợp/Chi tiết/Theo giá công
+  // bố) và Excel export đều dùng chung res.rows nên chỉ cần lọc đúng 1 chỗ này.
+  if(nhomkh || thuonghieu){
+    computed.rows = computed.rows.filter(r=>
+      (!nhomkh || r.dims.nhomkh===nhomkh) && (!thuonghieu || r.dims.thuonghieu===thuonghieu));
+  }
+  UI._tamTinhResult = computed;
+  renderTamTinh();
 }
 window.runTamTinh = runTamTinh;
 function setTamTinhView(v){ UI._tamTinhView = v; renderTamTinhResult(); }
@@ -7979,6 +8041,7 @@ function renderTamTinhGiaCongBo_(res){
       <td class="num mono">${fmtVND(r.ck_6thang)}</td><td class="num mono">${fmtVND(r.ck_nam)}</td><td class="num mono">${fmtVND(r.ck_khac)}</td>
       <td class="num mono" style="color:var(--emerald-dark);font-weight:700">${fmtVND(r.tongTienCKFull)}</td>
       <td class="num mono" style="color:var(--emerald-dark);font-weight:700">${r.pctGiaCongBoFull!=null?fmtPct(r.pctGiaCongBoFull):'—'}</td>
+      <td>${r.canhBaoGiaCongBo?`<span class="tag tag-gold" title="${esc(r.ghiChuGiaCongBo)}">⚠ Tạm dùng giá mua</span>`:''}</td>
     </tr>`).join('');
     const subtotalRow = `<tr style="background:var(--emerald-soft);font-weight:700;color:var(--emerald-dark)">
       <td colspan="3">Cộng nhóm — ${esc(g.nhomkhTen)} / ${esc(g.thuonghieuTen)} (${g.items.length} mã hàng)</td>
@@ -7988,15 +8051,17 @@ function renderTamTinhGiaCongBo_(res){
       <td class="num mono">${fmtVND(g.ck_6thang)}</td><td class="num mono">${fmtVND(g.ck_nam)}</td><td class="num mono">${fmtVND(g.ck_khac)}</td>
       <td class="num mono">${fmtVND(g.tongTienCKFull)}</td>
       <td class="num mono">${g.pctGiaCongBoFull!=null?fmtPct(g.pctGiaCongBoFull):'—'}</td>
+      <td></td>
     </tr>`;
     return itemRows + subtotalRow;
   }).join('');
+  const soCanhBao = res.rows.filter(r=>r.canhBaoGiaCongBo).length;
   document.getElementById('tamTinhViewBody').innerHTML = `
-    <div class="section-note"><b>CK cơ bản</b> = Doanh số giá công bố − Doanh số giá mua (khoản đã nằm sẵn trong giá mua, không phải CK cộng thêm theo chương trình) · <b>Tổng tiền CK</b> = CK cơ bản + CK tháng + CK quý + CK 1/2 năm + CK năm + CK khác · <b>Tỷ lệ CK/giá CB</b> = Tổng tiền CK ÷ Doanh số giá công bố — mức giảm giá THẬT SỰ so với giá niêm yết.</div>
+    <div class="section-note"><b>CK cơ bản</b> = Doanh số giá công bố − Doanh số giá mua (khoản đã nằm sẵn trong giá mua, không phải CK cộng thêm theo chương trình) · <b>Tổng tiền CK</b> = CK cơ bản + CK tháng + CK quý + CK 1/2 năm + CK năm + CK khác · <b>Tỷ lệ CK/giá CB</b> = Tổng tiền CK ÷ Doanh số giá công bố — mức giảm giá THẬT SỰ so với giá niêm yết.${soCanhBao?` <b>${soCanhBao} mã hàng</b> chưa có đủ giá công bố tháng này — cột "Ghi chú" đánh dấu ⚠, đã tạm dùng giá mua bình quân thay giá công bố (CK cơ bản = 0đ cho các mã đó).`:''}</div>
     <div class="card">
       <div class="card-head"><div><h2>Tổng hợp theo giá công bố</h2><div class="hint">${groups.length} nhóm · ${res.rows.length} mã hàng</div></div></div>
       ${groups.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Nhóm hàng</th><th>Thương hiệu</th><th>Mặt hàng</th><th class="num">Doanh số giá CB</th><th class="num">Doanh số giá mua</th><th class="num">Tiền CK cơ bản</th><th class="num">Tỷ lệ CK cơ bản</th><th class="num">CK tháng</th><th class="num">CK quý</th><th class="num">CK 1/2 năm</th><th class="num">CK năm</th><th class="num">CK khác</th><th class="num">Tổng tiền CK</th><th class="num">Tỷ lệ CK/giá CB</th></tr></thead>
+        <thead><tr><th>Nhóm hàng</th><th>Thương hiệu</th><th>Mặt hàng</th><th class="num">Doanh số giá CB</th><th class="num">Doanh số giá mua</th><th class="num">Tiền CK cơ bản</th><th class="num">Tỷ lệ CK cơ bản</th><th class="num">CK tháng</th><th class="num">CK quý</th><th class="num">CK 1/2 năm</th><th class="num">CK năm</th><th class="num">CK khác</th><th class="num">Tổng tiền CK</th><th class="num">Tỷ lệ CK/giá CB</th><th>Ghi chú</th></tr></thead>
         <tbody>${rowsHtml}</tbody>
         <tfoot><tr style="font-weight:700;background:var(--navy-950);color:#fff">
           <td colspan="3">TỔNG CỘNG</td>
@@ -8006,6 +8071,7 @@ function renderTamTinhGiaCongBo_(res){
           <td class="num mono">${fmtVND(t.ck_6thang)}</td><td class="num mono">${fmtVND(t.ck_nam)}</td><td class="num mono">${fmtVND(t.ck_khac)}</td>
           <td class="num mono">${fmtVND(t.tongTienCKFull)}</td>
           <td class="num mono">${t.dtGiaCongBo?fmtPct(t.tongTienCKFull/t.dtGiaCongBo*100):'—'}</td>
+          <td></td>
         </tr></tfoot>
       </table></div>` : `<div class="empty">Không có mã hàng nào phát sinh mua trong tháng đã chọn.</div>`}
     </div>
@@ -8088,7 +8154,7 @@ function exportTamTinhXlsx(){
   // BÁO CÁO 4 — Tổng hợp theo giá công bố: phân cấp Nhóm hàng > Thương hiệu > Mặt hàng, kèm dòng "Cộng
   // nhóm" sau mỗi cặp (flat sheet, không dùng rowspan — Excel rowspan không tương thích tốt với json_to_sheet).
   const groups4 = buildTamTinhTheoGiaCongBo_(res);
-  const COLS4 = ['Nhóm hàng','Thương hiệu','Mặt hàng','Doanh số giá công bố','Doanh số giá mua','Tiền CK cơ bản','Tỷ lệ CK cơ bản','CK tháng','CK quý','CK 1/2 năm','CK năm','CK khác','Tổng tiền CK','Tỷ lệ CK/giá CB'];
+  const COLS4 = ['Nhóm hàng','Thương hiệu','Mặt hàng','Doanh số giá công bố','Doanh số giá mua','Tiền CK cơ bản','Tỷ lệ CK cơ bản','CK tháng','CK quý','CK 1/2 năm','CK năm','CK khác','Tổng tiền CK','Tỷ lệ CK/giá CB','Ghi chú'];
   const out4 = [];
   const subtotalRows4 = [];
   groups4.forEach(g=>{
@@ -8098,7 +8164,8 @@ function exportTamTinhXlsx(){
       'Tiền CK cơ bản': r.ck_coban, 'Tỷ lệ CK cơ bản': r.pctCoBan!=null?Number(r.pctCoBan.toFixed(2)):'',
       'CK tháng': r.ck_thang, 'CK quý': r.ck_quy, 'CK 1/2 năm': r.ck_6thang, 'CK năm': r.ck_nam, 'CK khác': r.ck_khac,
       'Tổng tiền CK': r.tongTienCKFull,
-      'Tỷ lệ CK/giá CB': r.pctGiaCongBoFull!=null?Number(r.pctGiaCongBoFull.toFixed(2)):''
+      'Tỷ lệ CK/giá CB': r.pctGiaCongBoFull!=null?Number(r.pctGiaCongBoFull.toFixed(2)):'',
+      'Ghi chú': r.ghiChuGiaCongBo || ''
     }));
     subtotalRows4.push(out4.length);
     out4.push({
@@ -8129,7 +8196,7 @@ function exportTamTinhXlsx(){
     if(subtotalSet4.has(dataIdx)) return { rowStyle: XB_S_.ok };
     return null;
   });
-  xbSetCols_(ws4, [14,14,32,16,16,14,14,14,14,14,14,14,16,14]);
+  xbSetCols_(ws4, [14,14,32,16,16,14,14,14,14,14,14,14,16,14,40]);
 
   const wsTongQuan = buildSimpleKpiSheet_('BẢNG CHIẾT KHẤU TẠM TÍNH THEO THÁNG',
     [['Tháng áp dụng', `${fmtDate(res.monthStart)} → ${fmtDate(res.monthEnd)}`]].concat(
