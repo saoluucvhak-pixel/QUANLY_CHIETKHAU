@@ -1364,6 +1364,41 @@ function runFormulaTests(){
       const row = rep.find(r=>r.key==='prog_PT1');
       assertTrue(row && row.dat===false, 'SL=30 < 100 -> phải CHƯA đạt bậc');
     });
+    // SỬA LỖI (rà soát theo phản ánh người dùng thực tế — "doanh số đúng nhưng tiền chiết khấu sai/thấp
+    // hơn hẳn"): trước đây cờ coGiaCongBo (dùng để cảnh báo "⚠ chưa khai báo đủ giá công bố" khi hình
+    // thức CK là % theo giá công bố) chỉ đòi hỏi CÓ MỘT PHẦN giá công bố khớp được (cbSLsum>0), không đòi
+    // hỏi khớp ĐỦ cho toàn bộ sản lượng — nên khi phần lớn mã hàng trong nhóm CHƯA có giá công bố (chỉ 1
+    // vài mã có), cờ vẫn báo "đã đủ", KHÔNG cảnh báo gì, trong khi tiền CK thực tế chỉ tính được trên đúng
+    // phần ít ỏi đã khớp — phần còn lại ngầm ra 0đ. Test này khoá đúng hành vi ĐÃ SỬA: phải phát hiện
+    // đúng trường hợp thiếu giá công bố MỘT PHẦN (không phải chỉ khi thiếu HOÀN TOÀN).
+    test('computeReport (tích hợp): CK theo %giá công bố, CHỈ 1/2 mã hàng có giá công bố -> coGiaCongBo=false (phải cảnh báo), tiền CK chỉ tính đúng phần đã khớp', ()=>{
+      // Fixture RIÊNG cho test này — sao lưu/khôi phục catalog+programs+purchases gốc (SP001/PT1) để
+      // không ảnh hưởng các test PHÍA SAU trong cùng khối try (VD "Chiết khấu lũy kế" ngay bên dưới vẫn
+      // cần đúng DB.programs có PT1 và DB.catalog có SP001).
+      const catalogBak = DB.catalog, programsBak = DB.programs, purchasesBak = DB.purchases;
+      try{
+        DB.catalog = {
+          mhck: [
+            { mamh:'SP_A', mamh_ncc:'MAMH_A', tenhang:'Lốp A', thuonghieu:'CASU', nhomkh:'NO', loaisp:'NO', dactinh:'NO', congdung:'NO', quycach:'NO' },
+            { mamh:'SP_B', mamh_ncc:'MAMH_B', tenhang:'Lốp B', thuonghieu:'CASU', nhomkh:'NO', loaisp:'NO', dactinh:'NO', congdung:'NO', quycach:'NO' }
+          ],
+          giacongbo: [ { mamh_ncc:'MAMH_A', gia_congbo:10000, hieuluctu:'', hieulucden:'' } ] // CHỈ khai giá công bố cho SP_A, THIẾU cho SP_B
+        };
+        DB.purchases = [
+          { ngay:'2026-07-05', mahang:'SP_A', soluong:80, giatri:700000, nhacungcap:'NCC A' },
+          { ngay:'2026-07-10', mahang:'SP_B', soluong:80, giatri:700000, nhacungcap:'NCC A' } // tổng SL=160 ≥ sl_min=100, nhưng SP_B chưa có giá công bố
+        ];
+        DB.programs = [ { id:'PGCB', ma_chietkhau:'CT_GCB', dim_thuonghieu:'CASU', dim_nhomkh:'NO', dim_loaisp:'NO', dim_dactinh:'NO', dim_congdung:'NO', dim_quycach:'NO',
+          sl_min:100, sl_max:0, dt_min:0, dt_max:0, dieukien_sldt:'AND', ht_chietkhau:'PERCENT_GIACONGBO', tl_ck:3, ma_doanhthu:'', dt_kehoach:0 } ];
+        const rep = computeReport('2026-07-01','2026-07-31','', false, '', '');
+        const row = rep.find(r=>r.key==='prog_PGCB');
+        assertTrue(!!row && row.dat, 'phải ĐẠT bậc (tổng SL=160 ≥ 100)');
+        assertTrue(!row.coGiaCongBo, 'chỉ 1/2 mã hàng có giá công bố -> KHÔNG được coi là đã đủ (bug cũ: cbSLsum>0 coi nhầm là đủ)');
+        assertClose(row.tienck, 80*10000*0.03, 'tiền CK chỉ tính được trên đúng phần SP_A đã khớp giá công bố (SP_B chưa có giá công bố -> góp 0đ)');
+      } finally {
+        DB.catalog = catalogBak; DB.programs = programsBak; DB.purchases = purchasesBak;
+      }
+    });
 
     /* ---- Chiết khấu lũy kế (chiết khấu bổ sung): all_or_reduced ---- */
     DB.purchases = [
@@ -2478,7 +2513,7 @@ function computeReport(fromDate, toDate, supplierFilter, onlyMapped, programFilt
     // BƯỚC 3: MỚI — nếu "Mã doanh thu tính chiết khấu" khác "Mã doanh thu điều kiện", doanh thu dùng
     // để nhân tỷ lệ % được lấy theo tổ hợp thuộc tính RIÊNG đó, không phải toàn bộ phạm vi đã dùng để
     // xét đạt bậc (VD: xét SL/DT trên toàn đơn hàng nhưng chỉ trả CK cho 1 nhóm sản phẩm cụ thể).
-    let skuDetails = [], tienck = 0;
+    let skuDetails = [], tienck = 0, baseSkusForCoverage = [];
     if(dat){
       let baseSkus = matchingSkus;
       if(prog.ma_doanhthu_tinhck && prog.ma_doanhthu_tinhck !== prog.ma_doanhthu){
@@ -2487,7 +2522,26 @@ function computeReport(fromDate, toDate, supplierFilter, onlyMapped, programFilt
       }
       skuDetails = baseSkus.map(s=>skuDetailRow(s, effProg)).sort((a,b)=>b.tienck-a.tienck);
       tienck = skuDetails.reduce((a,x)=>a+x.tienck,0);
+      baseSkusForCoverage = baseSkus;
     }
+    // SỬA LỖI NGHIÊM TRỌNG (rà soát theo phản ánh người dùng — "doanh số đúng nhưng tiền chiết khấu
+    // sai/thấp hơn hẳn"): cờ cảnh báo "⚠ chưa khai báo đủ giá công bố" (gcbWarn ở renderReportResult/
+    // exportReportXlsx) trước đây dùng coGiaCongBo=cbSLsum>0 — SAI Ở CẢ 2 ĐIỂM:
+    //  (1) chỉ đòi hỏi CÓ MỘT PHẦN giá công bố khớp được ("> 0"), không đòi hỏi khớp ĐỦ cho toàn bộ sản
+    //      lượng — nên khi chỉ vài mã hàng/vài ngày mua có giá công bố còn phần lớn thì KHÔNG, cờ vẫn là
+    //      true (coi như "đã đủ") và KHÔNG cảnh báo gì, trong khi tiền CK thực tế (hình thức % theo giá
+    //      công bố) chỉ tính được trên đúng phần ít ỏi đã khớp — phần còn lại NGẦM tính ra 0đ, không có
+    //      cách nào biết trừ khi tự đối chiếu Doanh số/Sản lượng "được chiết khấu" ở KPI đầu trang.
+    //  (2) cbGTsum/cbSLsum được gộp trên matchingSkus (TOÀN BỘ mã hàng dùng để XÉT ĐẠT BẬC), không phải
+    //      trên baseSkus (đúng tập mã hàng THẬT SỰ dùng để TÍNH TIỀN — có thể hẹp hơn nếu chương trình có
+    //      khai "Mã doanh thu tính chiết khấu" riêng ở BƯỚC 3 trên) — nên dù có sửa điểm (1), cờ vẫn có
+    //      thể đối chiếu nhầm phạm vi.
+    // Nay tính lại ĐÚNG trên baseSkus (tập mã hàng thật sự tính tiền) và đòi hỏi ĐỦ giá công bố cho TOÀN
+    // BỘ sản lượng của tập đó mới coi là coGiaCongBo=true — cùng quy tắc "đầy đủ" đã dùng nhất quán ở
+    // tinhHoanThanhKH_/chonDoanhSoGiaCongBo_/resolveDoanhSo_.
+    const baseSlSum = baseSkusForCoverage.reduce((a,s)=>a+s.sl,0);
+    const baseCbSlSum = baseSkusForCoverage.reduce((a,s)=>a+s.cbSL,0);
+    const coGiaCongBoDayDuTienCK = baseSlSum<=0 || baseCbSlSum>=baseSlSum-1e-6;
 
     result.push({
       key: 'prog_'+prog.id,
@@ -2498,7 +2552,7 @@ function computeReport(fromDate, toDate, supplierFilter, onlyMapped, programFilt
       tienck, dtkh, hoanthanh, dtkhSource,
       giaMuaTB: giaMuaBinhQuan(totalSl,totalDt),
       giaCongBoTB: cbSLsum ? cbGTsum/cbSLsum : 0,
-      coGiaCongBo: cbSLsum>0, hasNCC: hasNCCany,
+      coGiaCongBo: dat ? coGiaCongBoDayDuTienCK : cbSLsum>0, hasNCC: hasNCCany,
       pctTheoGiaMua: totalDt ? (tienck/totalDt*100) : null,
       htChietkhau: HT_OPTIONS.find(o=>o.v===prog.ht_chietkhau)?.l || prog.ht_chietkhau,
       ttChietkhau: ttCkLabel(prog.tt_ck),
