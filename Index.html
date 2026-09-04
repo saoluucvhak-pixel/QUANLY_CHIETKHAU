@@ -395,6 +395,15 @@ function todayISO(){ return toISO(new Date()); }
 // duyệt của người dùng.
 function yearOfISO_(s){ return Number(String(s||'').slice(0,4)); }
 function monthOfISO_(s){ return Number(String(s||'').slice(5,7)); }
+// SỬA LỖI (rà soát theo phản ánh người dùng — "chỗ Tính chiết khấu, Từ ngày/Đến ngày sửa năm không được,
+// tự nhảy ra 1906"): đây là quirk đã biết của widget <input type="date"> gốc trên 1 số trình duyệt/hệ
+// điều hành — khi người dùng bấm đúng vào ô "năm" (4 chữ số) rồi gõ/cuộn để sửa, một số trình duyệt tạm
+// thời coi số vừa gõ (VD gõ "6") là năm "0006", rồi tự chuẩn hoá hiển thị/nội bộ kiểu 2 chữ số thành
+// "19xx" (1900+6=1906) trước khi người dùng gõ đủ 4 số — Claude/JS không có cách nào chặn quirk NGAY TỪ
+// trình duyệt, nhưng có thể chặn hậu quả của nó (dùng đúng năm 1906 để tính toán) ngay khi giá trị được
+// gửi vào app. Nay mọi nơi đọc rf_from/rf_to đều đi qua isSaneReportYear_() để LOẠI những năm rõ ràng vô
+// lý này trước khi tính toán, thay vì âm thầm dùng năm 1906 làm kỳ báo cáo.
+function isSaneReportYear_(y){ return Number.isInteger(y) && y>=2015 && y<=2035; }
 
 /* ---------------------------- ô nhập số nguyên có định dạng phân cách nghìn ---------------------------- */
 // Dùng cho các trường: Sản lượng Min/Max, Doanh thu Min/Max, Số tiền CK cố định, Doanh thu kế hoạch...
@@ -1268,6 +1277,19 @@ function runFormulaTests(){
   test('snapPeriodFromDate: ngày rỗng/không hợp lệ -> trả null (không NaN/crash)', ()=>{
     assertEqual(snapPeriodFromDate('', 'Tháng'), null);
     assertEqual(snapPeriodFromDate('khong-phai-ngay', 'Tháng'), null);
+  });
+
+  /* ---- isSaneReportYear_: chặn hậu quả quirk "sửa năm trên lịch tự nhảy ra 1906" ---- */
+  test('isSaneReportYear_: năm hợp lý (2015-2035) -> true', ()=>{
+    assertTrue(isSaneReportYear_(2026));
+    assertTrue(isSaneReportYear_(2015));
+    assertTrue(isSaneReportYear_(2035));
+  });
+  test('isSaneReportYear_: năm vô lý (VD quirk widget lịch ra 1906) -> false', ()=>{
+    assertTrue(!isSaneReportYear_(1906));
+    assertTrue(!isSaneReportYear_(2014));
+    assertTrue(!isSaneReportYear_(2036));
+    assertTrue(!isSaneReportYear_(NaN));
   });
 
   /* ---- upsertLocal: dùng cho cộng dồn DB.reportCKTH/CKCT qua nhiều lần lưu báo cáo ---- */
@@ -6660,10 +6682,24 @@ function resolveTamTinhPeriod_(thoidiem, asOfISO){
   return null; // thời điểm không xác định (VD "Theo hiệu lực CTKM") -> không có kỳ tham chiếu chuẩn nào
 }
 // Cập nhật trực tiếp giá trị 2 ô ngày (KHÔNG render lại toàn trang) để không làm mất focus đang gõ
+// Chặn hậu quả của quirk "sửa năm trên <input type="date"> tự nhảy ra 1906" (xem giải thích tại
+// isSaneReportYear_ phía trên) — dùng CHUNG cho cả 3 hàm onchange bên dưới: nếu giá trị vừa đọc được có
+// năm vô lý, báo lỗi rõ ràng + khôi phục lại đúng giá trị ĐANG LƯU (UI._reportFilters, giá trị hợp lệ gần
+// nhất) cho CẢ 2 ô, thay vì âm thầm dùng năm sai để snap kỳ/tính báo cáo.
+function guardReportDateYear_(v){
+  if(!v) return true; // rỗng thì các hàm gọi tự return sớm, không cần chặn ở đây
+  if(isSaneReportYear_(yearOfISO_(v))) return true;
+  toast(`Năm "${yearOfISO_(v)}" không hợp lệ (chỉ nhận 2015–2035) — có thể do gõ nhầm ở ô năm của lịch. Đã khôi phục lại ngày trước đó.`, 'err');
+  const rf = UI._reportFilters || {};
+  const fromEl = document.getElementById('rf_from'), toEl = document.getElementById('rf_to');
+  if(fromEl) fromEl.value = rf.from || '';
+  if(toEl) toEl.value = rf.to || '';
+  return false;
+}
 function onReportThoidiemChange(){
   const thoidiem = document.getElementById('rf_thoidiem').value;
   const base = document.getElementById('rf_from').value || document.getElementById('rf_to').value;
-  if(!base) return;
+  if(!base || !guardReportDateYear_(base)) return;
   const snap = snapPeriodFromDate(base, thoidiem);
   if(snap){ document.getElementById('rf_from').value = snap.from; document.getElementById('rf_to').value = snap.to; }
 }
@@ -6671,7 +6707,7 @@ window.onReportThoidiemChange = onReportThoidiemChange;
 function onReportFromChange(){
   const from = document.getElementById('rf_from').value;
   const thoidiem = document.getElementById('rf_thoidiem').value;
-  if(!from) return;
+  if(!from || !guardReportDateYear_(from)) return;
   const snap = snapPeriodFromDate(from, thoidiem);
   if(snap){ document.getElementById('rf_from').value = snap.from; document.getElementById('rf_to').value = snap.to; }
 }
@@ -6679,7 +6715,7 @@ window.onReportFromChange = onReportFromChange;
 function onReportToChange(){
   const to = document.getElementById('rf_to').value;
   const thoidiem = document.getElementById('rf_thoidiem').value;
-  if(!to) return;
+  if(!to || !guardReportDateYear_(to)) return;
   const snap = snapPeriodFromDate(to, thoidiem);
   if(snap){ document.getElementById('rf_from').value = snap.from; document.getElementById('rf_to').value = snap.to; }
 }
@@ -6707,8 +6743,8 @@ function renderReport(){
             ${THOIDIEM_OPTIONS.map(o=>`<option value="${o}" ${rf.thoidiem===o?'selected':''}>${o}</option>`).join('')}
           </select>
         </div>
-        <div class="field" style="margin:0"><label>Từ ngày</label><input type="date" id="rf_from" value="${rf.from}" onchange="onReportFromChange()"></div>
-        <div class="field" style="margin:0"><label>Đến ngày</label><input type="date" id="rf_to" value="${rf.to}" onchange="onReportToChange()"></div>
+        <div class="field" style="margin:0"><label>Từ ngày</label><input type="date" id="rf_from" value="${rf.from}" min="2015-01-01" max="2035-12-31" onchange="onReportFromChange()"></div>
+        <div class="field" style="margin:0"><label>Đến ngày</label><input type="date" id="rf_to" value="${rf.to}" min="2015-01-01" max="2035-12-31" onchange="onReportToChange()"></div>
         <div class="field" style="margin:0"><label>Nhà cung cấp</label>
           <select id="rf_supplier"><option value="">Tất cả</option>${suppliers.map(s=>`<option value="${esc(s)}" ${rf.supplier===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
         </div>
@@ -6744,6 +6780,13 @@ function runReport(){
   const supplier = document.getElementById('rf_supplier').value;
   const program = document.getElementById('rf_program').value;
   const thoidiem = document.getElementById('rf_thoidiem').value;
+  // Chặn ngay cả khi guard ở onReportFromChange()/onReportToChange() lỡ không kịp chạy (VD dán giá trị,
+  // hoặc bấm "Tính chiết khấu" ngay sau khi widget lịch tự đổi giá trị mà chưa kịp bắn sự kiện onchange)
+  // — xem giải thích đầy đủ tại isSaneReportYear_/guardReportDateYear_ phía trên.
+  if((from && !isSaneReportYear_(yearOfISO_(from))) || (to && !isSaneReportYear_(yearOfISO_(to)))){
+    toast('Khoảng ngày đang chọn có năm không hợp lệ (VD do gõ nhầm ở ô năm của lịch) — vui lòng chọn lại Từ ngày/Đến ngày trước khi tính.', 'err');
+    return;
+  }
   UI._reportFilters = { from, to, supplier, program, thoidiem };
   if(!from || !to){ toast('Vui lòng chọn khoảng ngày đối soát','err'); return; }
   UI.reportResult = { from, to, supplier, program, thoidiem, rows: computeReport(from, to, supplier, false, program, thoidiem) };
