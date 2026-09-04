@@ -2278,23 +2278,101 @@ function datKHReasonText_(r){
 // Tham số skipGateOverride (cờ thứ 4 khi gọi từ evaluateProgramForPeriod) CHẶN ĐỆ QUY VÔ HẠN: khi hàm
 // TỰ GỌI LẠI evaluateProgramForPeriod() cho đúng khoảng ngày gate, lần gọi đó KHÔNG được áp dụng override
 // này thêm 1 lần nữa (nếu không sẽ gọi lại chính nó mãi mãi vì prog vẫn còn kh_tu_ngay/kh_den_ngay).
-function resolveGateHoanThanh_(prog, supplierFilter, skipGateOverride){
+function resolveGateHoanThanh_(prog, supplierFilter, skipGateOverride, precomputedMaps){
   if(skipGateOverride || !prog.kh_tu_ngay || !prog.kh_den_ngay) return null;
-  return evaluateProgramForPeriod(prog, prog.kh_tu_ngay, prog.kh_den_ngay, supplierFilter, true);
+  return evaluateProgramForPeriod(prog, prog.kh_tu_ngay, prog.kh_den_ngay, supplierFilter, true, precomputedMaps);
+}
+// GỘP (tối ưu code, rà soát lần nữa sau khi đã audit tài liệu): computeReport() VÀ evaluateProgramForPeriod()
+// trước đây CÀI LẶP gần như y hệt đoạn "xác định 1 chương trình có ĐẠT hay không + %hoàn thành KH" (gộp
+// SL/DT, tra Kế hoạch, chọn cơ sở doanh số theo resolveDoanhSo_, xét gate Mục 7 riêng, chọn Bậc điều kiện,
+// so bậc SL/DT, xét %KH Min-Max) — đây CHÍNH LÀ nguồn gốc bug "coGiaCongBo" đã sửa trước đó (đúng 1 nơi,
+// quên nơi kia). Đã kiểm chứng bằng test chéo (6 kịch bản: bậc theo %KH, Mã doanh thu tính CK riêng, giá
+// công bố phủ 1 phần, gate Mục 7, bậc không khớp + gate) rằng trước khi gộp, 2 hàm cho kết quả khớp nhau ở
+// MỌI kịch bản THỰC TẾ — riêng 1 ca cực hiếm (có Bậc điều kiện, KHÔNG bậc nào khớp, ĐỒNG THỜI có khai gate
+// Mục 7) trước đây evaluateProgramForPeriod() trả hoanthanh=%KH từ gate (dù bậc chưa khớp) trong khi
+// computeReport() trả null (đúng tinh thần "chưa khớp bậc thì không hiện %KH dễ gây hiểu nhầm" — xem
+// comment gốc ở computeReport). Bản gộp dưới đây THEO ĐÚNG quy ước của computeReport (null) cho cả 2 nơi.
+// Nay tách phần lõi dùng chung ra resolveProgramEvaluation_() — nhận vào matchingSkus (mảng mã hàng ĐÃ
+// gộp sl/dt/cbGT/cbSL đúng phạm vi dims chương trình, do TỪNG caller tự gộp theo cách của mình, xem 2 nơi
+// gọi bên dưới) — trả về ĐẦY ĐỦ thông tin đánh giá; mỗi caller tự dựng lại đúng hình dạng kết quả của
+// mình từ đây, KHÔNG đổi hợp đồng (contract) trả về cho các nơi đang gọi evaluateProgramForPeriod().
+function resolveProgramEvaluation_(prog, matchingSkus, fromDate, toDate, supplierFilter, skipGateOverride, precomputedMaps){
+  const totalSl = matchingSkus.reduce((a,x)=>a+x.sl,0);
+  const totalDt = matchingSkus.reduce((a,x)=>a+x.dt,0);
+  let hasNCCany = false, cbGTsum=0, cbSLsum=0;
+  matchingSkus.forEach(s=>{ if(s.hasNCC) hasNCCany = true; cbGTsum+=s.cbGT; cbSLsum+=s.cbSL; });
+
+  // Tính TRƯỚC %hoàn thành KH (không phụ thuộc bậc nào được chọn — dtkh tra theo Mã doanh thu của CHÍNH
+  // mã chiết khấu, độc lập với bậc con nào sẽ được chọn) để dùng làm tiêu chí CHỌN bậc khi bậc chia theo
+  // %KH (xem bacMatches_/resolveEffectiveBac_). "Doanh số" dùng để so bậc SL/DT VÀ tính %KH lấy theo
+  // "Cách tính doanh số" đã khai báo trên Mã doanh thu (resolveDoanhSo_).
+  const khRefPre = lookupKeHoach_(prog.ma_doanhthu, fromDate, toDate || fromDate);
+  const dtkhPre = khRefPre ? Number(khRefPre.dt_kehoach||0) : Number(prog.dt_kehoach||0);
+  const dsInfo = resolveDoanhSo_(prog.ma_doanhthu, totalDt, cbGTsum, cbSLsum, totalSl);
+  let hoanthanhPreVal = dtkhPre ? (dsInfo.doanhso/dtkhPre*100) : null;
+  // Mục 7 CK năm: nếu chương trình khai riêng "khoảng ngày xét đạt KH" (kh_tu_ngay/kh_den_ngay) khác
+  // khoảng ngày đang tính, dùng %hoàn thành KH tính trên khoảng ngày GATE riêng đó để CHỌN bậc (xem
+  // resolveGateHoanThanh_).
+  const gate = resolveGateHoanThanh_(prog, supplierFilter, skipGateOverride, precomputedMaps);
+  if(gate) hoanthanhPreVal = gate.hoanthanh;
+
+  // THEO MÔ HÌNH 3 TẦNG: nếu mã chiết khấu này có các bậc điều kiện con (DB.dieukien), tìm đúng bậc khớp
+  // với SL/DT và/hoặc %KH thực tế; nếu KHÔNG có bậc con nào, effective === prog (y hệt cũ).
+  const { effective, bacList, matchedBac, noBacMatched } = resolveEffectiveBac_(prog, totalSl, dsInfo.doanhso, hoanthanhPreVal);
+  const bracketChk = checkSlDtBracket(effective, totalSl, dsInfo.doanhso);
+  const datBac = noBacMatched ? false : bracketChk.dat;
+
+  // SỬA LỖI HIỂN THỊ: khi có bậc con nhưng KHÔNG bậc nào khớp SL/DT/%KH thực tế, không hiện "%hoàn thành
+  // kế hoạch" (dễ gây hiểu nhầm) — để trống, chỉ rõ nguyên nhân là chưa khớp bậc nào.
+  const khRef = noBacMatched ? null : khRefPre;
+  const dtkh = noBacMatched ? 0 : (khRef ? Number(khRef.dt_kehoach||0) : Number(effective.dt_kehoach||0));
+  let hoanthanh = (noBacMatched || !dtkh) ? null : (dsInfo.doanhso/dtkh*100);
+  // Minh bạch hoá nguồn Doanh thu kế hoạch dùng để tính %hoàn thành KH — gắn kèm canhBaoGiaCongBo khi Giá
+  // công bố NCC CHƯA phủ hết mã hàng đang xét (xem resolveDoanhSo_).
+  let dtkhSource = noBacMatched ? null : (
+    khRef
+      ? { loai:'kehoach', ma_kehoach: khRef.parent?.ma_kehoach || '', ky: khRef.ky || null, canhBaoGiaCongBo: dsInfo.canhBaoGiaCongBo }
+      : (dtkh ? { loai:'chuongtrinh', canhBaoGiaCongBo: dsInfo.canhBaoGiaCongBo } : { loai:'none' })
+  );
+  // Khi có khoảng ngày gate riêng VÀ có bậc khớp, %hoàn thành KH hiển thị/dùng để GATE cuối cùng PHẢI là
+  // % đã tính trên khoảng ngày gate (không phải % tính trên khoảng ngày đang tính/tính thưởng).
+  if(gate && !noBacMatched){
+    hoanthanh = gate.hoanthanh;
+    dtkhSource = gate.dtkhSource ? Object.assign({}, gate.dtkhSource, { tuKhoangGateRieng:true, gate_tu_ngay: prog.kh_tu_ngay, gate_den_ngay: prog.kh_den_ngay }) : dtkhSource;
+  }
+
+  // Kiểm tra thêm điều kiện %KH Min-Max (nếu chương trình có khai báo Doanh thu kế hoạch và khoảng %KH).
+  const datKH = resolveDatKH_(noBacMatched ? dtkh : (hoanthanh!=null?1:0), hoanthanh, effective);
+  const dat = datBac && datKH;
+
+  return {
+    dat, datBac, datKH, noBacMatched,
+    slDat: bracketChk.slDat, dtDat: bracketChk.dtDat, sldtLogic: bracketChk.logic,
+    totalSl, totalDt, cbGTsum, cbSLsum, hasNCCany,
+    dtkh, hoanthanh, dtkhSource,
+    effective, bacList, matchedBac, gate
+  };
 }
 // Đánh giá 1 chương trình (hoặc 1 "chương trình ảo" ghép từ điều kiện Chiết khấu lũy kế) có ĐẠT hay
 // không trong 1 khoảng ngày [fromDate,toDate] BẤT KỲ (không nhất thiết là kỳ báo cáo chính đang xem).
 // Dùng lại đúng logic bậc SL/DT (AND/OR) + %KH Min-Max như computeReport, để tái sử dụng cho:
 //  - Chiết khấu lũy kế: tính bậc riêng của chương trình lũy kế trên toàn kỳ đã chọn.
-function evaluateProgramForPeriod(prog, fromDate, toDate, supplierFilter, _skipGateOverride){
+// TỐI ƯU (đề xuất #3 — cache map trong 1 lượt tính): mhckMap()/giaCongBoMap() là hàm THUẦN của
+// DB.catalog.mhck/giacongbo (dựng lại 1 object tra cứu từ mảng) — dựng lại từ đầu MỖI LẦN gọi hàm này là
+// lãng phí khi 1 thao tác của người dùng gọi hàm này NHIỀU lần liên tiếp trong cùng 1 lượt tính KHÔNG có
+// gì thay đổi dữ liệu ở giữa (VD: nhiều chương trình trong computeTamTinhChietKhau_, hoặc nhiều tháng
+// trong autoComputeAndSaveMonthsForLuyKe_). Tham số `precomputedMaps` (tùy chọn, dạng {map, gcbMap}) cho
+// phép caller tự dựng map 1 LẦN rồi truyền xuống dùng lại — KHÔNG bắt buộc: bỏ qua tham số này thì hàm tự
+// dựng map như cũ (tương thích ngược tuyệt đối với mọi lời gọi hiện có không truyền tham số thứ 6).
+// KHÔNG tự cache ngầm bên trong mhckMap()/giaCongBoMap() (rủi ro: DB.catalog.mhck/giacongbo bị sửa TRỰC
+// TIẾP bằng push()/splice()/gán theo index ở nhiều nơi trong code — cache dựa theo reference mảng sẽ có
+// thể "cũ" mà không phát hiện được, gây thiếu dữ liệu âm thầm giống lớp bug coGiaCongBo đã gặp).
+function evaluateProgramForPeriod(prog, fromDate, toDate, supplierFilter, _skipGateOverride, precomputedMaps){
   if(!periodOverlap(fromDate, toDate, prog.hieuluctu, prog.hieulucden)){
     return { dat:false, totalSl:0, totalDt:0, hoanthanh:null, matchingSkus:[], reason:'Ngoài hiệu lực chương trình' };
   }
-  const map = mhckMap();
-  // BỔ SUNG (rà soát 24/08/2026): tra thêm giá công bố (gcbMap) — trước đây hàm này chỉ gộp SL/DT theo
-  // giá mua thực tế, không có dữ liệu giá công bố để tính %KH đúng cơ sở hồ sơ yêu cầu (xem
-  // tinhHoanThanhKH_ ở trên).
-  const gcbMap = giaCongBoMap();
+  const map = (precomputedMaps && precomputedMaps.map) || mhckMap();
+  const gcbMap = (precomputedMaps && precomputedMaps.gcbMap) || giaCongBoMap();
   const purchases = DB.purchases.filter(p=>{
     if(!p.ngay) return false;
     if(fromDate && p.ngay < fromDate) return false;
@@ -2319,51 +2397,19 @@ function evaluateProgramForPeriod(prog, fromDate, toDate, supplierFilter, _skipG
   });
   const pd = {thuonghieu:prog.dim_thuonghieu,nhomkh:prog.dim_nhomkh,loaisp:prog.dim_loaisp,dactinh:prog.dim_dactinh,congdung:prog.dim_congdung,quycach:prog.dim_quycach};
   const matchingSkus = Object.values(skuAgg).filter(s=>dimsMatch(s.dims, pd));
-  const totalSl = matchingSkus.reduce((a,x)=>a+x.sl,0);
-  const totalDt = matchingSkus.reduce((a,x)=>a+x.dt,0);
-  const cbGTsum = matchingSkus.reduce((a,x)=>a+x.cbGT,0);
-  const cbSLsum = matchingSkus.reduce((a,x)=>a+x.cbSL,0);
   if(matchingSkus.length===0) return { dat:false, totalSl:0, totalDt:0, hoanthanh:null, matchingSkus:[], reason:'Không có mã hàng phát sinh mua trong kỳ' };
-  // Tính TRƯỚC %hoàn thành KH (không phụ thuộc bậc nào được chọn — dtkh tra theo Mã doanh thu của CHÍNH
-  // mã chiết khấu, độc lập với bậc con nào sẽ được chọn) để dùng làm tiêu chí CHỌN bậc khi bậc chia
-  // theo %KH (xem giải thích tại bacMatches_/resolveEffectiveBac_).
-  // MỚI (24/08/2026): "doanh số" dùng để so bậc SL/DT VÀ tính %KH nay lấy theo "Cách tính doanh số" đã
-  // khai báo trên Mã doanh thu (resolveDoanhSo_) thay vì luôn ưu tiên giá công bố như trước — xem
-  // resolveDoanhSo_/doanhSoBasis_ ở trên. totalDt (giá mua thực tế) vẫn giữ nguyên để hiển thị KPI.
-  // SỬA LỖI (25/08/2026): truyền ĐỦ khoảng ngày đang xét (fromDate→toDate), không chỉ 1 mốc ngày — để
-  // lookupKeHoach_ chọn đúng kỳ kế hoạch có độ dài khớp với khoảng đang xét (VD cả Quý), xem giải thích
-  // đầy đủ tại định nghĩa hàm lookupKeHoach_.
-  const khRefPre = lookupKeHoach_(prog.ma_doanhthu, fromDate, toDate || fromDate);
-  const dtkhPre = khRefPre ? Number(khRefPre.dt_kehoach||0) : Number(prog.dt_kehoach||0);
-  const dsInfo = resolveDoanhSo_(prog.ma_doanhthu, totalDt, cbGTsum, cbSLsum, totalSl);
-  let hoanthanhPreVal = dtkhPre ? (dsInfo.doanhso/dtkhPre*100) : null;
-  // MỚI (28/08/2026 — Mục 7 CK năm, xem giải thích đầy đủ tại resolveGateHoanThanh_): nếu chương trình
-  // khai riêng "khoảng ngày xét đạt KH" (kh_tu_ngay/kh_den_ngay) khác khoảng ngày đang tính, dùng %hoàn
-  // thành KH tính trên khoảng ngày GATE riêng đó để CHỌN bậc (thay cho %hoàn thành tính trên khoảng ngày
-  // đang tính — vốn là khoảng "tính thưởng", không phải khoảng "xét đạt KH").
-  const gate = resolveGateHoanThanh_(prog, supplierFilter, _skipGateOverride);
-  if(gate) hoanthanhPreVal = gate.hoanthanh;
-  const { effective, bacList, matchedBac, noBacMatched } = resolveEffectiveBac_(prog, totalSl, dsInfo.doanhso, hoanthanhPreVal);
-  if(noBacMatched){
-    return { dat:false, totalSl, totalDt, hoanthanh: gate?gate.hoanthanh:null, matchingSkus, reason:`Không đạt bậc nào trong ${bacList.length} bậc đã khai báo`, bacList, matchedBac:null };
+  // Phần lõi "xác định ĐẠT/CHƯA ĐẠT + %hoàn thành KH" nay dùng CHUNG với computeReport() qua
+  // resolveProgramEvaluation_() (xem giải thích đầy đủ tại định nghĩa hàm đó) — trước đây 2 hàm cài lặp
+  // riêng đoạn này.
+  const ev = resolveProgramEvaluation_(prog, matchingSkus, fromDate, toDate, supplierFilter, _skipGateOverride, precomputedMaps);
+  if(ev.noBacMatched){
+    return { dat:false, totalSl:ev.totalSl, totalDt:ev.totalDt, hoanthanh:ev.hoanthanh, matchingSkus, reason:`Không đạt bậc nào trong ${ev.bacList.length} bậc đã khai báo`, bacList:ev.bacList, matchedBac:null };
   }
-  const bracketChk = checkSlDtBracket(effective, totalSl, dsInfo.doanhso);
-  const khRef = khRefPre;
-  const dtkh = khRef ? Number(khRef.dt_kehoach||0) : Number(effective.dt_kehoach||0);
-  let hoanthanh = dtkh ? (dsInfo.doanhso/dtkh*100) : null;
-  let dtkhSource = khRef
-    ? { loai:'kehoach', ma_kehoach: khRef.parent?.ma_kehoach || '', ky: khRef.ky || null, canhBaoGiaCongBo: dsInfo.canhBaoGiaCongBo }
-    : (dtkh ? { loai:'chuongtrinh', canhBaoGiaCongBo: dsInfo.canhBaoGiaCongBo } : { loai:'none' });
-  // MỚI: khi có khoảng ngày gate riêng, %hoàn thành KH dùng để GATE cuối cùng VÀ hiển thị PHẢI là % đã
-  // tính trên khoảng ngày gate (không phải % tính trên khoảng ngày đang tính/tính thưởng) — đánh dấu rõ
-  // tuKhoangGateRieng để UI/Excel có thể chú thích, tránh người xem nhầm 2 con số khác bản chất.
-  if(gate){
-    hoanthanh = gate.hoanthanh;
-    dtkhSource = gate.dtkhSource ? Object.assign({}, gate.dtkhSource, { tuKhoangGateRieng:true, gate_tu_ngay: prog.kh_tu_ngay, gate_den_ngay: prog.kh_den_ngay }) : dtkhSource;
-  }
-  const datKH = resolveDatKH_(hoanthanh!=null?1:0, hoanthanh, effective);
-  const dat = bracketChk.dat && datKH;
-  return { dat, datBac:bracketChk.dat, datKH, slDat:bracketChk.slDat, dtDat:bracketChk.dtDat, sldtLogic:bracketChk.logic, totalSl, totalDt, hoanthanh, dtkhSource, matchingSkus, effectiveProg: effective, bacList, matchedBac };
+  return {
+    dat:ev.dat, datBac:ev.datBac, datKH:ev.datKH, slDat:ev.slDat, dtDat:ev.dtDat, sldtLogic:ev.sldtLogic,
+    totalSl:ev.totalSl, totalDt:ev.totalDt, hoanthanh:ev.hoanthanh, dtkhSource:ev.dtkhSource,
+    matchingSkus, effectiveProg: ev.effective, bacList:ev.bacList, matchedBac:ev.matchedBac
+  };
 }
 function ttCkLabel(v){
   return TT_CK_OPTIONS.find(o=>o.v===v)?.l || v || '';
@@ -2372,9 +2418,13 @@ function giaMuaBinhQuan(sl, dt){
   return sl ? dt/sl : 0;
 }
 
-function computeReport(fromDate, toDate, supplierFilter, onlyMapped, programFilter, thoidiemFilter){
-  const map = mhckMap();
-  const gcbMap = giaCongBoMap();
+// Tham số thứ 7 `precomputedMaps` (tùy chọn, {map, gcbMap}) — xem giải thích đầy đủ tại
+// evaluateProgramForPeriod(): cho phép caller gọi computeReport() NHIỀU LẦN liên tiếp (VD từng tháng
+// trong autoComputeAndSaveMonthsForLuyKe_) dùng chung 1 lần dựng map thay vì dựng lại mỗi lần gọi. Bỏ qua
+// tham số này (mọi lời gọi hiện có) thì hành vi giữ nguyên 100% như trước.
+function computeReport(fromDate, toDate, supplierFilter, onlyMapped, programFilter, thoidiemFilter, precomputedMaps){
+  const map = (precomputedMaps && precomputedMaps.map) || mhckMap();
+  const gcbMap = (precomputedMaps && precomputedMaps.gcbMap) || giaCongBoMap();
   const purchases = DB.purchases.filter(p=>{
     if(!p.ngay) return false;
     const d = p.ngay;
@@ -2444,71 +2494,15 @@ function computeReport(fromDate, toDate, supplierFilter, onlyMapped, programFilt
     if(matchingSkus.length===0) return; // chương trình này không có mã hàng nào phát sinh mua trong kỳ
     matchingSkus.forEach(s=>coveredSkuKeys.add(norm(s.mahang)));
 
-    const totalSl = matchingSkus.reduce((a,x)=>a+x.sl,0);
-    const totalDt = matchingSkus.reduce((a,x)=>a+x.dt,0);
-    // Gộp giá công bố SỚM (trước khi chọn bậc) — cần để tính %KH đúng cơ sở GIÁ CÔNG BỐ ngay từ bước
-    // CHỌN bậc %KH (xem tinhHoanThanhKH_/bacMatches_), không chỉ để tính SỐ TIỀN chiết khấu như trước.
-    let hasNCCany = false, cbGTsum=0, cbSLsum=0;
-    matchingSkus.forEach(s=>{ if(s.hasNCC) hasNCCany = true; cbGTsum+=s.cbGT; cbSLsum+=s.cbSL; });
-
-    // Tính TRƯỚC %hoàn thành KH (dtkh tra theo Mã doanh thu của CHÍNH mã chiết khấu — không phụ thuộc
-    // bậc nào sẽ được chọn) để dùng làm tiêu chí CHỌN bậc khi bậc chia theo %KH.
-    // MỚI (24/08/2026): "doanh số" dùng để so bậc SL/DT VÀ tính %KH nay lấy theo "Cách tính doanh số"
-    // khai báo trên Mã doanh thu (resolveDoanhSo_) — xem giải thích tại định nghĩa hàm này.
-    // SỬA LỖI (25/08/2026): truyền ĐỦ khoảng ngày đang xét (fromDate→toDate), không chỉ 1 mốc ngày — để
-  // lookupKeHoach_ chọn đúng kỳ kế hoạch có độ dài khớp với khoảng đang xét (VD cả Quý), xem giải thích
-  // đầy đủ tại định nghĩa hàm lookupKeHoach_.
-  const khRefPre = lookupKeHoach_(prog.ma_doanhthu, fromDate, toDate || fromDate);
-    const dtkhPre = khRefPre ? Number(khRefPre.dt_kehoach||0) : Number(prog.dt_kehoach||0);
-    const dsInfo = resolveDoanhSo_(prog.ma_doanhthu, totalDt, cbGTsum, cbSLsum, totalSl);
-    let hoanthanhPreVal = dtkhPre ? (dsInfo.doanhso/dtkhPre*100) : null;
-    // MỚI (28/08/2026 — Mục 7 CK năm, xem giải thích đầy đủ tại resolveGateHoanThanh_): nếu chương trình
-    // khai riêng "khoảng ngày xét đạt KH" (kh_tu_ngay/kh_den_ngay) khác khoảng ngày đang tính, dùng %hoàn
-    // thành KH tính trên khoảng ngày GATE riêng đó để CHỌN bậc.
-    const gate = resolveGateHoanThanh_(prog, supplierFilter, false);
-    if(gate) hoanthanhPreVal = gate.hoanthanh;
-
-    // THEO MÔ HÌNH 3 TẦNG: nếu mã chiết khấu này có các bậc điều kiện con (DB.dieukien), tìm đúng bậc
-    // khớp với SL/DT và/hoặc %KH thực tế (xem bacMatches_) và dùng SL/DT/Tỷ lệ CK của BẬC ĐÓ để tính —
-    // vẫn giữ nguyên id/ma_chietkhau/dims/ht_chietkhau của chính mã chiết khấu. Nếu KHÔNG có bậc con
-    // nào, effective === prog (y hệt cũ).
-    const { effective: effProg, bacList: progBacList, matchedBac, noBacMatched } = resolveEffectiveBac_(prog, totalSl, dsInfo.doanhso, hoanthanhPreVal);
-    const bracketChk = checkSlDtBracket(effProg, totalSl, dsInfo.doanhso);
-    const datBac = noBacMatched ? false : bracketChk.dat;
-
-    // SỬA LỖI HIỂN THỊ: khi mã chiết khấu có bậc con nhưng KHÔNG bậc nào khớp SL/DT/%KH thực tế, không
-    // nên hiện "% hoàn thành kế hoạch" tính theo dt_kehoach của CHÍNH mã chiết khấu (không liên quan, dễ
-    // gây hiểu nhầm) — để trống, chỉ rõ nguyên nhân là chưa khớp bậc nào.
-    const khRef = noBacMatched ? null : khRefPre;
-    const dtkh = noBacMatched ? 0 : (khRef ? Number(khRef.dt_kehoach||0) : Number(effProg.dt_kehoach||0));
-    // %hoàn thành KH tính theo "doanh số" đã chọn ở trên (dsInfo.doanhso — theo giá công bố hoặc giá hóa
-    // đơn tùy "Cách tính doanh số" khai trên Mã doanh thu), chia cho Doanh thu kế hoạch.
-    let hoanthanh = (noBacMatched || !dtkh) ? null : (dsInfo.doanhso/dtkh*100);
-    const hoanthanhFinal = { canhBaoGiaCongBo: noBacMatched ? false : dsInfo.canhBaoGiaCongBo };
-    // THEO YÊU CẦU: minh bạch hoá nguồn Doanh thu kế hoạch dùng để tính %hoàn thành KH — trước đây
-    // dtkh được lấy ngầm (ưu tiên Danh mục kế hoạch, không có thì rơi về số khai trực tiếp trên Mã
-    // chiết khấu/bậc), người xem báo cáo không biết con số đang dùng lấy từ đâu, dễ nhầm khi có nhiều
-    // kế hoạch trùng Mã doanh thu hoặc khi quên cập nhật Danh mục kế hoạch cho kỳ mới. Nay gắn kèm
-    // dtkhSource mô tả rõ 1 trong 3 trường hợp, hiển thị dạng tooltip cạnh %Hoàn thành KH trên bảng kết
-    // quả (xem renderReportResult) và cột riêng khi xuất Excel (xem exportReportXlsx). Nay bổ sung thêm
-    // canhBaoGiaCongBo: true khi Giá công bố NCC CHƯA phủ hết mã hàng đang xét, nên %hoàn thành KH tạm
-    // dùng doanh số giá mua thực tế thay vì giá công bố — người xem cần biết đây là số GẦN ĐÚNG.
-    let dtkhSource = noBacMatched ? null : (
-      khRef
-        ? { loai:'kehoach', ma_kehoach: khRef.parent?.ma_kehoach || '', ky: khRef.ky || null, canhBaoGiaCongBo: hoanthanhFinal.canhBaoGiaCongBo }
-        : (dtkh ? { loai:'chuongtrinh', canhBaoGiaCongBo: hoanthanhFinal.canhBaoGiaCongBo } : { loai:'none' })
-    );
-    // MỚI: khi có khoảng ngày gate riêng VÀ có bậc khớp, %hoàn thành KH hiển thị/dùng để GATE cuối cùng
-    // PHẢI là % đã tính trên khoảng ngày gate (không phải % tính trên khoảng ngày đang tính/tính thưởng).
-    if(gate && !noBacMatched){
-      hoanthanh = gate.hoanthanh;
-      dtkhSource = gate.dtkhSource ? Object.assign({}, gate.dtkhSource, { tuKhoangGateRieng:true, gate_tu_ngay: prog.kh_tu_ngay, gate_den_ngay: prog.kh_den_ngay }) : dtkhSource;
-    }
-
-    // Kiểm tra thêm điều kiện % Kế hoạch Min-Max (nếu chương trình có khai báo Doanh thu kế hoạch
-    // và khoảng % KH): % hoàn thành kế hoạch phải nằm trong [%KH Min, %KH Max] thì mới được tính CK.
-    const datKH = resolveDatKH_(noBacMatched ? dtkh : (hoanthanh!=null?1:0), hoanthanh, effProg);
-    const dat = datBac && datKH;
+    // Phần lõi "xác định ĐẠT/CHƯA ĐẠT + %hoàn thành KH" nay dùng CHUNG với evaluateProgramForPeriod() qua
+    // resolveProgramEvaluation_() (xem giải thích đầy đủ tại định nghĩa hàm đó) — trước đây 2 hàm cài lặp
+    // riêng gần như y hệt đoạn này, là nguồn gốc bug "coGiaCongBo" đã sửa trước đó.
+    const ev = resolveProgramEvaluation_(prog, matchingSkus, fromDate, toDate, supplierFilter, false, {map, gcbMap});
+    const effProg = ev.effective, progBacList = ev.bacList, matchedBac = ev.matchedBac, noBacMatched = ev.noBacMatched;
+    const totalSl = ev.totalSl, totalDt = ev.totalDt, cbGTsum = ev.cbGTsum, cbSLsum = ev.cbSLsum, hasNCCany = ev.hasNCCany;
+    const bracketChk = { slDat: ev.slDat, dtDat: ev.dtDat, logic: ev.sldtLogic };
+    const datBac = ev.datBac, dtkh = ev.dtkh, hoanthanh = ev.hoanthanh, dtkhSource = ev.dtkhSource;
+    const datKH = ev.datKH, dat = ev.dat;
 
     // BƯỚC 3: MỚI — nếu "Mã doanh thu tính chiết khấu" khác "Mã doanh thu điều kiện", doanh thu dùng
     // để nhân tỷ lệ % được lấy theo tổ hợp thuộc tính RIÊNG đó, không phải toàn bộ phạm vi đã dùng để
@@ -6818,7 +6812,7 @@ function renderReport(){
     </div>
 
     <div class="section-note" style="margin-top:12px">
-      <b>Lưu ý quy trình:</b> "Tính chiết khấu" ở trên chỉ tính cho <b>đúng 1 khoảng Từ ngày–Đến ngày</b> bạn chọn (thường là 1 tháng). Còn "Chiết khấu bổ sung" bên dưới cần đối chiếu <b>NHIỀU tháng đã được Tính + Lưu báo cáo trước đó</b> — vì vậy 2 khu vực chọn kỳ là <b>độc lập với nhau</b>, không tự đồng bộ. Nếu chưa lưu đủ các tháng cần đối chiếu, dùng nút <b>"Tự động tính & lưu cho các tháng đã chọn"</b> ở khung Chiết khấu bổ sung bên dưới để làm nhanh 1 lần thay vì lặp lại thủ công.
+      <b>Lưu ý quy trình:</b> "Tính chiết khấu" ở trên chỉ tính cho <b>đúng 1 khoảng Từ ngày–Đến ngày</b> bạn chọn (thường là 1 tháng). Còn "Chiết khấu bổ sung" bên dưới cần đối chiếu <b>NHIỀU tháng đã được Tính + Lưu báo cáo trước đó</b> — vì vậy 2 khu vực chọn kỳ là <b>độc lập với nhau</b>, không tự đồng bộ (dùng nút <b>"Lấy Từ–Đến ngày từ khung Tính chiết khấu ở trên"</b> ở khung Chiết khấu bổ sung nếu 2 khoảng ngày tình cờ trùng nhau, đỡ gõ lại tay). Nếu chưa lưu đủ các tháng cần đối chiếu, dùng nút <b>"Tự động tính & lưu cho các tháng đã chọn"</b> ở khung Chiết khấu bổ sung bên dưới để làm nhanh 1 lần thay vì lặp lại thủ công.
     </div>
     <div id="reportResultWrap"></div>
     <div style="margin-top:28px">${renderBonusFilterCard()}</div>
@@ -7002,9 +6996,27 @@ function renderBonusFilterCard(){
         <div class="field" style="margin:0"><label>Đến ngày</label><input type="date" id="bn_to" value="${bf.to}"></div>
         <div class="field" style="margin:0;display:flex;align-items:flex-end;justify-content:flex-end"><button class="btn btn-primary btn-sm" id="btnRunBonusCalc" onclick="runBonusCalc()">${ICON.calc} Tính chiết khấu bổ sung</button></div>
       </div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-sm" id="btnSyncBonusPeriod" onclick="syncBonusPeriodFromMain()" title="2 khung chọn kỳ vẫn độc lập (mục đích khác nhau) — nút này chỉ SAO CHÉP Từ/Đến ngày hiện có ở khung Tính chiết khấu xuống đây, đỡ phải gõ lại tay">${ICON.copy} Lấy Từ–Đến ngày từ khung Tính chiết khấu ở trên</button>
+      </div>
     </div>
   `;
 }
+// ĐỀ XUẤT TỐI ƯU QUY TRÌNH: 2 khung chọn kỳ ("Tính chiết khấu" ở trên và "Chiết khấu bổ sung" ở đây) vẫn
+// CỐ Ý độc lập (mục đích khác nhau — 1 khoảng ngày đơn vs nhiều tháng lũy kế, xem section-note phía trên),
+// KHÔNG tự động đồng bộ ngầm (dễ ghi đè nhầm 1 khoảng ngày người dùng đang chủ ý chọn riêng cho việc đối
+// chiếu nhiều tháng). Thay vào đó cung cấp nút bấm CHỦ ĐỘNG để sao chép nhanh Từ/Đến ngày từ khung chính
+// xuống đây khi 2 khoảng ngày tình cờ trùng nhau — giảm thao tác gõ lại tay mà không đổi hành vi mặc định.
+function syncBonusPeriodFromMain(){
+  const from = document.getElementById('rf_from').value;
+  const to = document.getElementById('rf_to').value;
+  if(!from || !to){ toast('Khung "Tính chiết khấu" ở trên chưa chọn đủ Từ ngày–Đến ngày', 'err'); return; }
+  document.getElementById('bn_from').value = from;
+  document.getElementById('bn_to').value = to;
+  UI._bonusFilters = { ...(UI._bonusFilters||{}), from, to };
+  toast('Đã lấy Từ ngày–Đến ngày từ khung Tính chiết khấu', 'ok');
+}
+window.syncBonusPeriodFromMain = syncBonusPeriodFromMain;
 // THEO GÓP Ý: tự động tính + lưu báo cáo (REPORT_CKTH/CT) LẦN LƯỢT cho từng tháng đã tick chọn ở khung
 // Chiết khấu bổ sung — tránh phải quay lại khung "Tính chiết khấu" ở trên, tự chọn lại Từ/Đến ngày và
 // bấm Lưu thủ công cho từng tháng một. Chỉ tính riêng cho đúng chương trình chính đã liên kết.
@@ -7013,11 +7025,15 @@ function renderBonusFilterCard(){
 // "Tính chiết khấu bổ sung" — đảm bảo cả 2 nơi luôn tính theo đúng 1 công thức, không lặp code.
 async function autoComputeAndSaveMonthsForLuyKe_(baseProg, thangList, thoidiem, year, onProgress){
   let savedCount = 0, skippedCount = 0;
+  // TỐI ƯU: dựng map Danh mục nhóm CK / Giá công bố NCC 1 LẦN cho cả vòng lặp nhiều tháng, thay vì để
+  // computeReport() tự dựng lại từ đầu ở MỖI tháng (dữ liệu catalog không đổi giữa các tháng trong cùng 1
+  // lượt "Tự động tính & lưu" này) — xem giải thích tại evaluateProgramForPeriod().
+  const precomputedMaps = { map: mhckMap(), gcbMap: giaCongBoMap() };
   for(const m of thangList){
     if(onProgress) onProgress(m, year);
     const monthStart = toISO(new Date(year, m-1, 1));
     const monthEnd = toISO(new Date(year, m, 0));
-    const rows = computeReport(monthStart, monthEnd, '', false, baseProg.id, thoidiem);
+    const rows = computeReport(monthStart, monthEnd, '', false, baseProg.id, thoidiem, precomputedMaps);
     const progRow = rows.find(r=>r.program && r.program.id===baseProg.id);
     if(!progRow){ skippedCount++; continue; }
     const pctHtSl = (progRow.program.sl_max && Number(progRow.program.sl_max)>0) ? (progRow.sl/Number(progRow.program.sl_max)*100) : null;
@@ -7170,6 +7186,11 @@ function computeBonusDiscount(lk, thangList, thoidiemCk, fromDate, toDate){
   if((lk.kieu_tinh||'all_or_reduced')==='dual_condition'){
     return computeDualConditionBonus(lk, baseProg, thangList, thoidiemCk, fromDate, toDate);
   }
+  // TỐI ƯU: dựng map Danh mục nhóm CK / Giá công bố NCC 1 LẦN cho cả hàm này — bên dưới gọi
+  // evaluateProgramForPeriod() NHIỀU LẦN (1 lần/tháng trong thangList + 1 lần cho ownChk) hoàn toàn ĐỒNG BỘ
+  // (không có await xen giữa), dữ liệu catalog chắc chắn không đổi giữa các lần gọi trong 1 hàm này — xem
+  // giải thích đầy đủ tại evaluateProgramForPeriod().
+  const precomputedMaps = { map: mhckMap(), gcbMap: giaCongBoMap() };
 
   // BƯỚC 1: đối chiếu từng tháng lũy kế với dữ liệu ĐÃ LƯU ở REPORT_CKTH (không tính lại từ đầu)
   const year = yearOfISO_(fromDate);
@@ -7188,7 +7209,7 @@ function computeBonusDiscount(lk, thangList, thoidiemCk, fromDate, toDate){
     //  - "HOÀN TOÀN KHÔNG đặt hàng tháng đó" (doanh số = 0) -> làm GIÁN ĐOẠN điều kiện "đặt hàng LIÊN TỤC
     //    4 tháng" ngay từ gốc, không phải chỉ "không đạt mức" -> MẤT TOÀN BỘ chiết khấu (xem cờ
     //    anyMonthZeroRevenue + finalDat bên dưới), không phải chỉ giảm còn 80%.
-    const monthActual = evaluateProgramForPeriod(baseProg, monthStart, monthEnd, '');
+    const monthActual = evaluateProgramForPeriod(baseProg, monthStart, monthEnd, '', false, precomputedMaps);
     const khongCoDoanhSo = !monthActual.totalDt && !monthActual.totalSl;
     const rec = findMonthReport_(baseProg.id, thoidiemCk, m, year);
     if(!rec) return { thang:m, status:'CHUA_LUU', dat:false, pct:null, khongCoDoanhSo, note: khongCoDoanhSo ? 'Không phát sinh doanh số tháng này (không đặt hàng)' : 'Chưa có báo cáo đã lưu cho tháng này' };
@@ -7217,7 +7238,7 @@ function computeBonusDiscount(lk, thangList, thoidiemCk, fromDate, toDate){
     dt_kehoach: lk.dt_kehoach, pct_kh_min: lk.pct_kh_min, pct_kh_max: lk.pct_kh_max,
     hieuluctu: lk.hieuluctu, hieulucden: lk.hieulucden, ma_doanhthu: baseProg.ma_doanhthu
   };
-  const ownChk = evaluateProgramForPeriod(syntheticProg, fromDate, toDate, '');
+  const ownChk = evaluateProgramForPeriod(syntheticProg, fromDate, toDate, '', false, precomputedMaps);
   // SỬA/BỔ SUNG THEO CHÍNH SÁCH THỰC TẾ: trước đây chỉ có 2 kết quả — ĐẠT ĐỦ (trả 100% ck_bosung) hoặc
   // KHÔNG ĐẠT (trả 0đ) khi có bất kỳ tháng nào lỡ. Nay có thêm mức GIẢM TRỪ: nếu tổng kỳ vẫn đạt kế
   // hoạch (ownChk.dat=true) nhưng có 1+ tháng không đạt, trả theo % giảm trừ đã cấu hình (ck_reduced_pct,
@@ -7819,7 +7840,11 @@ function computeTamTinhChietKhau_(asOfISO){
     let result;
     if(!ref) result = { dat:false, effective:null, ref:null };
     else {
-      const ev = evaluateProgramForPeriod(prog, ref.from, ref.to, '');
+      // TỐI ƯU: dùng lại map (mhckMap/giaCongBoMap) đã dựng 1 lần ở đầu computeTamTinhChietKhau_() thay vì
+      // để evaluateProgramForPeriod() tự dựng lại từ đầu cho MỖI chương trình (progRefCache đã memoize
+      // theo prog.id nên chỉ tốn 1 lần/chương trình, nhưng với nhiều chương trình vẫn lãng phí dựng map
+      // lặp lại nhiều lần dù dữ liệu catalog không đổi trong cả lượt tính này).
+      const ev = evaluateProgramForPeriod(prog, ref.from, ref.to, '', false, { map, gcbMap });
       result = { dat: ev.dat, effective: ev.dat ? ev.effectiveProg : null, ref, totalSl: ev.totalSl, totalDt: ev.totalDt };
     }
     progRefCache.set(prog.id, result);
