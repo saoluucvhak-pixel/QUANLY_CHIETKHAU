@@ -1255,6 +1255,65 @@ function runFormulaTests(){
   test('snapPeriodFromDate: "Tùy chọn" -> không tự quy đổi (trả null)', ()=>{
     assertEqual(snapPeriodFromDate('2026-07-15', ''), null);
   });
+  test('snapPeriodFromDate: ngày đầu năm/đầu tháng (biên nhạy cảm múi giờ) vẫn đúng năm/tháng đang xét', ()=>{
+    // Trước khi sửa, hàm parse "2026-01-01" bằng new Date() rồi đọc lại getFullYear()/getMonth() theo
+    // giờ ĐỊA PHƯƠNG trình duyệt — với múi giờ lùi sau UTC, mốc UTC 00:00 này có thể bị đọc lùi về ngày
+    // 31/12 năm trước, khiến Bậc Tháng/Năm snap sai. Nay dùng yearOfISO_/monthOfISO_ (cắt chuỗi trực
+    // tiếp), không phụ thuộc múi giờ trình duyệt — test này khoá đúng hành vi tại các mốc dễ lộ lỗi nhất.
+    assertEqual(snapPeriodFromDate('2026-01-01', 'Tháng').from, '2026-01-01');
+    assertEqual(snapPeriodFromDate('2026-01-01', 'Tháng').to, '2026-01-31');
+    assertEqual(snapPeriodFromDate('2026-01-01', 'Năm').from, '2026-01-01');
+    assertEqual(snapPeriodFromDate('2026-01-01', 'Năm').to, '2026-12-31');
+  });
+  test('snapPeriodFromDate: ngày rỗng/không hợp lệ -> trả null (không NaN/crash)', ()=>{
+    assertEqual(snapPeriodFromDate('', 'Tháng'), null);
+    assertEqual(snapPeriodFromDate('khong-phai-ngay', 'Tháng'), null);
+  });
+
+  /* ---- upsertLocal: dùng cho cộng dồn DB.reportCKTH/CKCT qua nhiều lần lưu báo cáo ---- */
+  test('upsertLocal: khoá đã có -> GHÉP (merge) vào đúng dòng cũ, không nhân đôi', ()=>{
+    const arr = [{ k:'A', v:1, giu:'cu' }, { k:'B', v:2 }];
+    upsertLocal(arr, [{ k:'A', v:99 }], r=>r.k);
+    assertEqual(arr.length, 2, 'không được thêm dòng mới khi khoá đã tồn tại');
+    assertEqual(arr[0].v, 99, 'phải lấy giá trị MỚI cho trường đã gửi lên');
+    assertEqual(arr[0].giu, 'cu', 'phải GIỮ NGUYÊN trường không nằm trong dữ liệu mới (Object.assign merge)');
+  });
+  test('upsertLocal: khoá chưa có -> THÊM MỚI vào cuối mảng', ()=>{
+    const arr = [{ k:'A', v:1 }];
+    upsertLocal(arr, [{ k:'C', v:3 }], r=>r.k);
+    assertEqual(arr.length, 2);
+    assertEqual(arr[1].k, 'C');
+  });
+  test('upsertLocal: nhiều dòng mới trong CÙNG 1 lượt gọi, có cả trùng lẫn mới -> xử lý đúng từng dòng', ()=>{
+    const arr = [{ k:'A', v:1 }];
+    upsertLocal(arr, [{ k:'A', v:10 }, { k:'D', v:4 }, { k:'A', v:20 }], r=>r.k);
+    assertEqual(arr.length, 2, 'A chỉ 1 dòng (ghép 2 lần liên tiếp), D thêm mới -> tổng 2 dòng');
+    assertEqual(arr[0].v, 20, 'lượt ghép SAU (v:20) phải thắng lượt ghép TRƯỚC (v:10) trong cùng 1 lần gọi');
+  });
+
+  /* ---- buildExcludedFromTotalSet_/isExcludedFromTotal_: mã chiết khấu đã nằm sẵn trong giá (VD "CK cơ
+     bản 10%") phải bị loại khỏi các số TỔNG CKTM nhưng vẫn tra cứu riêng được ---- */
+  const programsBackupExcl = DB.programs;
+  try{
+    DB.programs = [
+      { id:'PX1', ma_chietkhau:'CK_CO_BAN_10PT', khong_gop_tong: true },
+      { id:'PX2', ma_chietkhau:'CK_THUONG', khong_gop_tong: false },
+      { id:'PX3', ma_chietkhau:'CK_KHAC' } // không khai cờ này -> mặc định KHÔNG loại
+    ];
+    test('buildExcludedFromTotalSet_: chỉ chứa đúng các Mã chiết khấu có khong_gop_tong=true', ()=>{
+      const s = buildExcludedFromTotalSet_();
+      assertTrue(s.has('CK_CO_BAN_10PT'));
+      assertTrue(!s.has('CK_THUONG'));
+      assertTrue(!s.has('CK_KHAC'));
+    });
+    test('isExcludedFromTotal_: khớp đúng kết quả với buildExcludedFromTotalSet_ (2 đường phải luôn đồng nhất)', ()=>{
+      assertTrue(isExcludedFromTotal_('CK_CO_BAN_10PT'));
+      assertTrue(!isExcludedFromTotal_('CK_THUONG'));
+      assertTrue(!isExcludedFromTotal_('KHONG_TON_TAI'));
+    });
+  } finally {
+    DB.programs = programsBackupExcl;
+  }
 
   /* ---- Bài test tích hợp: computeReport() trên dữ liệu mua hàng + chương trình giả lập ---- */
   const dbBackup = DB;
@@ -1568,11 +1627,24 @@ async function saveKeHoachChiTiet(){ return saveToSheet_('saveKeHoachChiTietData
 // Lưu báo cáo chiết khấu (cộng dồn trên Sheet) — cập nhật lại DB.reportCKTH/CKCT cục bộ theo kiểu
 // upsert tương tự để lần "Tính chiết khấu bổ sung" tiếp theo trong CÙNG phiên làm việc dùng được ngay,
 // không cần đợi tải lại từ Sheet.
+// TỐI ƯU: DB.reportCKTH/DB.reportCKCT CỘNG DỒN không giới hạn theo thời gian sử dụng (xem giải thích tại
+// saveReportCKTH/CKCT ở Code.gs) — trước đây mỗi dòng trong "rows" (kết quả vừa tính) dùng arr.findIndex()
+// để tìm dòng trùng khoá, quét lại TOÀN BỘ "arr" (lịch sử đã lưu) cho MỖI dòng, tức O(số dòng cũ × số
+// dòng mới) mỗi lần lưu báo cáo. Nay dựng 1 Map tra khoá->vị trí đúng 1 LẦN trước khi lặp, đưa độ phức
+// tạp về O(số dòng cũ + số dòng mới) — giữ NGUYÊN hành vi cũ (khi 1 khoá bị trùng nhiều lần trong "arr",
+// vẫn khớp đúng vị trí XUẤT HIỆN ĐẦU TIÊN như findIndex()).
 function upsertLocal(arr, rows, keyFn){
+  const idx = new Map();
+  arr.forEach((x,i)=>{ const k = keyFn(x); if(!idx.has(k)) idx.set(k, i); });
   rows.forEach(r=>{
     const k = keyFn(r);
-    const i = arr.findIndex(x=>keyFn(x)===k);
-    if(i>-1) arr[i] = Object.assign({}, arr[i], r); else arr.push(r);
+    if(idx.has(k)){
+      const i = idx.get(k);
+      arr[i] = Object.assign({}, arr[i], r);
+    } else {
+      arr.push(r);
+      idx.set(k, arr.length-1);
+    }
   });
 }
 // SỬA LỖI: bổ sung withFailureHandler ở cả 2 lượt gọi (trước đây thiếu, lỗi từ server bị treo im lặng
@@ -2318,11 +2390,23 @@ function isExcludedFromTotal_(maChietkhau){
   const p = DB.programs.find(x=>x.ma_chietkhau===maChietkhau);
   return !!(p && p.khong_gop_tong);
 }
+// TỐI ƯU: các bảng tổng hợp/xuất Excel bên dưới gọi isExcludedFromTotal_() cho TỪNG DÒNG của báo cáo
+// (REPORT_CKTH/CKCT — cộng dồn không giới hạn, lớn dần theo thời gian sử dụng), mỗi lần lại quét tuyến
+// tính toàn bộ DB.programs — tốn O(số dòng báo cáo × số mã chiết khấu). Hàm này dựng SẴN 1 Set các Mã
+// chiết khấu bị loại khỏi Tổng CKTM đúng 1 LẦN cho cả lượt tính/render/xuất Excel, dùng lại cho mọi dòng
+// (O(số dòng + số mã chiết khấu) thay vì nhân nhau) — không cache xuyên suốt nhiều lượt gọi khác nhau (để
+// luôn phản ánh đúng DB.programs hiện tại, tránh rủi ro dữ liệu cũ khi người dùng vừa sửa cờ này).
+function buildExcludedFromTotalSet_(){
+  const s = new Set();
+  (DB.programs||[]).forEach(p=>{ if(p && p.khong_gop_tong && p.ma_chietkhau) s.add(p.ma_chietkhau); });
+  return s;
+}
 function buildSkuAggregateView(rows){
   const m = {};
+  const exclSet = buildExcludedFromTotalSet_();
   rows.forEach(r=>{
     if(!r.dat || !r.skuDetails || !r.skuDetails.length) return;
-    if(isExcludedFromTotal_(r.program.ma_chietkhau)) return;
+    if(exclSet.has(r.program.ma_chietkhau)) return;
     r.skuDetails.forEach(s=>{
       const k = norm(s.mahang);
       if(!m[k]) m[k] = { mahang:s.mahang, tenhang:s.tenhang, sl:s.sl, dt:s.dt, dtGiaCongBo:s.dtGiaCongBo||0, tienck:0, programs:[] };
@@ -5839,6 +5923,7 @@ window.applyBaoCaoFilters = applyBaoCaoFilters;
 
 function getFilteredCKCT(){
   const bf = UI._baocaoFilters;
+  const exclSet = buildExcludedFromTotalSet_();
   return (DB.reportCKCT||[]).filter(r=>{
     if(bf.from && r.tu_ngay < bf.from) return false;
     if(bf.to && r.den_ngay > bf.to) return false;
@@ -5849,7 +5934,7 @@ function getFilteredCKCT(){
     // CKTM" (VD Mục 1 "CK cơ bản 10%" — đã nằm sẵn trong giá hóa đơn) khỏi báo cáo tổng hợp, tránh cộng
     // trùng vào các số TỔNG (xem isExcludedFromTotal_). Nếu người dùng CHỦ ĐỘNG lọc đích danh đúng mã
     // chiết khấu đó (bf.machietkhau), vẫn hiển thị để có thể tra cứu/kiểm tra riêng khi cần.
-    if(!bf.machietkhau && isExcludedFromTotal_(r.ma_chietkhau)) return false;
+    if(!bf.machietkhau && exclSet.has(r.ma_chietkhau)) return false;
     return true;
   });
 }
@@ -6033,14 +6118,15 @@ function renderTraCuuResult(){
   // CK cơ bản 10% ĐÃ nằm sẵn trong giá hóa đơn, cộng lại vào đây sẽ tính trùng tiền đã có trong giá mua)
   // — nay loại đúng các dòng đó khỏi Tổng, GIỮ NGUYÊN hiển thị đầy đủ trong bảng (kèm nhãn riêng) để
   // vẫn tra cứu/đối chiếu được, đúng cách "Báo cáo chiết khấu" (getFilteredCKCT) đã làm từ trước.
-  const totalCK = rows.reduce((s,r)=> s + (isExcludedFromTotal_(r.ma_chietkhau) ? 0 : (Number(r.chiet_khau)||0)), 0);
+  const exclSet = buildExcludedFromTotalSet_();
+  const totalCK = rows.reduce((s,r)=> s + (exclSet.has(r.ma_chietkhau) ? 0 : (Number(r.chiet_khau)||0)), 0);
   const soChuongTrinh = new Set(rows.map(r=>r.ma_chietkhau)).size;
   const pctTong = t.tongDoanhSoMua ? (totalCK/t.tongDoanhSoMua*100) : null;
   const rowsHtml = rows.map(r=>{
     const sl = Number(r.sanluong)||0, ds = Number(r.doanhso)||0, tienck = Number(r.chiet_khau)||0;
     const pct = ds ? (tienck/ds*100) : null;
     const dsCongBo = r.gia_congbo_bq ? sl*Number(r.gia_congbo_bq) : null;
-    const excluded = isExcludedFromTotal_(r.ma_chietkhau);
+    const excluded = exclSet.has(r.ma_chietkhau);
     return `<tr${excluded?' style="opacity:.65"':''}>
       <td>${fmtDate(r.tu_ngay)} → ${fmtDate(r.den_ngay)}</td>
       <td class="mono">${esc(r.ma_chietkhau)}${excluded?'<div class="hint" style="font-size:10px;color:var(--slate-400)">Không cộng vào Tổng</div>':''}</td>
@@ -6078,7 +6164,8 @@ function exportTraCuuXlsx(){
   const rows = t.rows;
   // SỬA (rà soát 27/08/2026 — cùng lý do đã sửa ở renderTraCuuResult()): loại dòng "Không cộng vào Tổng
   // CKTM" khỏi Tổng, vẫn liệt kê đủ trong bảng kèm cột đánh dấu riêng để đối chiếu.
-  const totalCK = rows.reduce((s,r)=> s + (isExcludedFromTotal_(r.ma_chietkhau) ? 0 : (Number(r.chiet_khau)||0)), 0);
+  const exclSet = buildExcludedFromTotalSet_();
+  const totalCK = rows.reduce((s,r)=> s + (exclSet.has(r.ma_chietkhau) ? 0 : (Number(r.chiet_khau)||0)), 0);
   const pctTong = t.tongDoanhSoMua ? (totalCK/t.tongDoanhSoMua*100) : null;
   const COLS = ['Kỳ','Mã chiết khấu','Hình thức CK','Sản lượng','Doanh số theo hóa đơn','Doanh số theo giá công bố','% CK','Tiền CK','Cộng vào Tổng CKTM?'];
   const out = rows.map(r=>{
@@ -6087,7 +6174,7 @@ function exportTraCuuXlsx(){
     const dsCongBo = r.gia_congbo_bq ? sl*Number(r.gia_congbo_bq) : '';
     return { 'Kỳ': `${r.tu_ngay} → ${r.den_ngay}`, 'Mã chiết khấu': r.ma_chietkhau, 'Hình thức CK': htDisplayLabel_(r.hinh_thuc_chietkhau),
       'Sản lượng': sl, 'Doanh số theo hóa đơn': ds, 'Doanh số theo giá công bố': dsCongBo, '% CK': pct, 'Tiền CK': tienck,
-      'Cộng vào Tổng CKTM?': isExcludedFromTotal_(r.ma_chietkhau) ? 'Không' : 'Có' };
+      'Cộng vào Tổng CKTM?': exclSet.has(r.ma_chietkhau) ? 'Không' : 'Có' };
   });
   const totalRowIdx = out.length;
   out.push({ 'Kỳ':'TỔNG CỘNG (đã loại dòng Không)', 'Sản lượng': t.tongSanLuongMua, 'Doanh số theo hóa đơn': t.tongDoanhSoMua, '% CK': pctTong!=null?Number(pctTong.toFixed(2)):'', 'Tiền CK': totalCK });
@@ -6301,7 +6388,8 @@ function periodBlockHtml(period){
   // SỬA LỖI (rà soát 24/08/2026): loại các mã chiết khấu đã đánh dấu "Không cộng vào Tổng CKTM" (VD Mục 1
   // "CK cơ bản 10%" — đã nằm sẵn trong giá hóa đơn) khỏi khối đối chiếu kỳ liền kề, để không cộng trùng
   // vào TỔNG khi so sánh giữa các kỳ (xem isExcludedFromTotal_).
-  const recs = (DB.reportCKTH||[]).filter(r=> r.tu_ngay===period.from && r.den_ngay===period.to && !isExcludedFromTotal_(r.ma_chietkhau));
+  const exclSet = buildExcludedFromTotalSet_();
+  const recs = (DB.reportCKTH||[]).filter(r=> r.tu_ngay===period.from && r.den_ngay===period.to && !exclSet.has(r.ma_chietkhau));
   const total = recs.reduce((s,r)=>s+(Number(r.so_tien_chietkhau)||0),0);
   const rowsHtml = recs.map(r=>`<tr>
     <td class="mono">${esc(r.ma_chietkhau)}</td>
@@ -6356,19 +6444,25 @@ function defaultQuarterRange(){
 }
 // Quy đổi 1 ngày bất kỳ về ranh giới đầu-cuối của kỳ tương ứng (Tháng/Quý/6 Tháng/Năm)
 function snapPeriodFromDate(baseDateISO, thoidiem){
-  const d = new Date(baseDateISO);
-  if(isNaN(d)) return null;
-  const y = d.getFullYear();
+  // SỬA LỖI (rủi ro múi giờ): trước đây dùng new Date(baseDateISO) rồi getFullYear()/getMonth() (giờ ĐỊA
+  // PHƯƠNG) để đọc lại năm/tháng — đúng lớp lỗi đã ghi chú tại yearOfISO_/monthOfISO_ phía trên: chuỗi
+  // "yyyy-mm-dd" được trình duyệt hiểu là mốc UTC 00:00, nên ở múi giờ LÙI sau UTC, getMonth()/getDate()
+  // có thể lùi lại đúng 1 ngày (VD "2026-02-01" bị hiểu nhầm thành tháng 1). Nay dùng đúng yearOfISO_/
+  // monthOfISO_ (cắt chuỗi trực tiếp, không qua Date parse) để hoàn toàn không phụ thuộc múi giờ trình
+  // duyệt — các new Date(y,m,...) bên dưới vẫn AN TOÀN như cũ vì nhận đủ (năm, tháng, ngày) tách rời thay
+  // vì parse chuỗi.
+  const y = yearOfISO_(baseDateISO);
+  const mIdx = monthOfISO_(baseDateISO) - 1; // 0-based, khớp quy ước getMonth()/new Date(y,m,...)
+  if(!y || isNaN(mIdx) || mIdx<0 || mIdx>11) return null;
   if(thoidiem==='Tháng'){
-    const m = d.getMonth();
-    return { from: toISO(new Date(y,m,1)), to: toISO(new Date(y,m+1,0)) };
+    return { from: toISO(new Date(y,mIdx,1)), to: toISO(new Date(y,mIdx+1,0)) };
   }
   if(thoidiem==='Quý'){
-    const q = Math.floor(d.getMonth()/3);
+    const q = Math.floor(mIdx/3);
     return { from: toISO(new Date(y,q*3,1)), to: toISO(new Date(y,q*3+3,0)) };
   }
   if(thoidiem==='6 Tháng'){
-    const half = d.getMonth() < 6 ? 0 : 1;
+    const half = mIdx < 6 ? 0 : 1;
     return { from: toISO(new Date(y,half*6,1)), to: toISO(new Date(y,half*6+6,0)) };
   }
   if(thoidiem==='Năm'){
@@ -7242,7 +7336,8 @@ function renderReportResult(){
   // "CK cơ bản 10%" — đã nằm sẵn trong giá hóa đơn, KHÔNG phải khoản cộng thêm) khỏi KPI "Tổng chiết khấu
   // đạt được", tránh cộng trùng vào giá trị tổng hiển thị cho người dùng (xem isExcludedFromTotal_). Dòng
   // chi tiết của chương trình đó vẫn hiển thị đầy đủ bên dưới để tra cứu, chỉ không gộp vào TỔNG.
-  const totalCK = rows.reduce((s,r)=> s + ((r.program && isExcludedFromTotal_(r.program.ma_chietkhau)) ? 0 : r.tienck), 0);
+  const exclSet = buildExcludedFromTotalSet_();
+  const totalCK = rows.reduce((s,r)=> s + ((r.program && exclSet.has(r.program.ma_chietkhau)) ? 0 : r.tienck), 0);
   const unmappedRow = rows.find(r=>r.key==='unmapped');
   const noProgRow = rows.find(r=>r.key==='no_program');
   const notReached = rows.filter(r=>r.program && !r.dat).length;
@@ -8149,7 +8244,8 @@ function exportReportXlsx(){
   // THEO YÊU CẦU (25/08/2026): "Doanh số theo giá công bố" song song với totalDT — để đối chiếu, xuất ra
   // cả trong sheet TongQuan lẫn thêm cột riêng ở bảng chính bên dưới.
   const totalDTGiaCongBo = rows.totalDTGiaCongBo != null ? rows.totalDTGiaCongBo : rows.reduce((s,r)=>s+(r.dtGiaCongBo||0),0);
-  const totalCK = rows.reduce((s,r)=> s + ((r.program && isExcludedFromTotal_(r.program.ma_chietkhau)) ? 0 : r.tienck), 0);
+  const exclSet = buildExcludedFromTotalSet_();
+  const totalCK = rows.reduce((s,r)=> s + ((r.program && exclSet.has(r.program.ma_chietkhau)) ? 0 : r.tienck), 0);
   const unmappedRow = rows.find(r=>r.key==='unmapped');
   const noProgRow = rows.find(r=>r.key==='no_program');
   const notReached = rows.filter(r=>r.program && !r.dat).length;
