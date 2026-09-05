@@ -1428,6 +1428,35 @@ function runFormulaTests(){
         DB.dieukien = dieukienBak; DB.doanhthu = doanhthuBak; DB.kehoach = kehoachBak; DB.kehoachChiTiet = kehoachCTBak;
       }
     });
+    // KHÓA HÀNH VI (phát hiện từ dữ liệu thật của người dùng — file Excel export Sheet, mã chiết khấu
+    // "CSMN_231013_NO_NO_NO_NO_001" báo 0đ chiết khấu dù rõ ràng có doanh số): dim_nhomkh trên
+    // CHUONGTRINHCHIETKHAU của 8 mã (tạo 24-27/08/2026) bị Google Sheet lưu LỆCH ĐỘ CHÍNH XÁC SỐ
+    // ("231013.009028"/"231013.004514" thay vì "231013"), trong khi Mã hàng (DM_MHCK) vẫn lưu đúng
+    // "231013" — dimsMatch() trước đây so KHỚP CHUỖI tuyệt đối nên loại bỏ TOÀN BỘ mã hàng, ra 0đ CK
+    // không cảnh báo. Test này khoá đúng hành vi ĐÃ SỬA: dims dạng số lệch độ chính xác nhỏ vẫn phải khớp.
+    test('dimsMatch/computeReport (tích hợp): dim_nhomkh lệch độ chính xác số (231013.009028 vs 231013) vẫn phải khớp mã hàng', ()=>{
+      const catalogBak = DB.catalog, programsBak = DB.programs, purchasesBak = DB.purchases, doanhthuBak = DB.doanhthu;
+      try{
+        DB.catalog = {
+          mhck: [ { mamh:'YEM01', mamh_ncc:'NCC_YEM01', tenhang:'Yếm Casumina', thuonghieu:'CSMN', nhomkh:231013.0, loaisp:'NO', dactinh:'NO', congdung:'NO', quycach:'NO' } ],
+          giacongbo: []
+        };
+        DB.purchases = [ { ngay:'2026-03-05', mahang:'YEM01', soluong:100, giatri:13000000, nhacungcap:'NCC A' } ];
+        DB.doanhthu = [];
+        // dim_nhomkh CỐ Ý lệch độ chính xác số giống hệt dữ liệu thật bị lỗi trên Sheet
+        DB.programs = [ { id:'PCSMN', ma_chietkhau:'CSMN_231013_NO_NO_NO_NO_001', dim_thuonghieu:'CSMN', dim_nhomkh:231013.009028,
+          dim_loaisp:'NO', dim_dactinh:'NO', dim_congdung:'NO', dim_quycach:'NO',
+          sl_min:0, sl_max:0, dt_min:0, dt_max:0, dieukien_sldt:'AND', ht_chietkhau:'PERCENT_GIAMUA', tl_ck:10, ma_doanhthu:'', dt_kehoach:0,
+          hieuluctu:'2026-01-01', hieulucden:'2026-12-31' } ];
+        const rep = computeReport('2026-03-01','2026-03-31','', false, '', '');
+        const row = rep.find(r=>r.key==='prog_PCSMN');
+        assertTrue(!!row, 'phải có dòng cho mã CSMN_231013_NO_NO_NO_NO_001 (không được để 0 mã hàng khớp vì lệch độ chính xác số)');
+        assertEqual(row.soMaHang, 1, 'phải khớp đúng 1 mã hàng thuộc Nhóm hàng 231013');
+        assertClose(row.tienck, 13000000*0.1, 'tiền CK phải tính đúng trên doanh số đã khớp, không phải 0đ');
+      } finally {
+        DB.catalog = catalogBak; DB.programs = programsBak; DB.purchases = purchasesBak; DB.doanhthu = doanhthuBak;
+      }
+    });
 
     /* ---- Chiết khấu lũy kế (chiết khấu bổ sung): all_or_reduced ---- */
     DB.purchases = [
@@ -2115,8 +2144,21 @@ function dimsMatch(itemDims, ruleDims) {
       return list.includes(iv);
     }
 
-    // Nếu chương trình chọn giá trị cụ thể, sản phẩm bắt buộc phải khớp
-    return iv === rv;
+    // Nếu chương trình chọn giá trị cụ thể, sản phẩm bắt buộc phải khớp — so KHỚP CHUỖI trước (giữ
+    // đúng hành vi cũ cho mọi mã dạng chữ như 'TBR', 'BIAS_20-24'...).
+    if (iv === rv) return true;
+    // SỬA LỖI (rà soát theo dữ liệu thật — "8 mã CSMN_231013_... không tính được chiết khấu dù rõ ràng
+    // có doanh số"): phát hiện dim_nhomkh của 1 số Mã chiết khấu trên Sheet bị lưu LỆCH ĐỘ CHÍNH XÁC SỐ
+    // (VD "231013.009028" thay vì "231013" — nghi do lỗi định dạng/copy trên Google Sheet), trong khi Mã
+    // hàng (DM_MHCK) vẫn lưu đúng "231013". Vì norm() ép cả 2 về CHUỖI rồi so tuyệt đối, chỉ cần lệch 1
+    // xíu độ chính xác số là dimsMatch() coi như KHÔNG khớp cho TOÀN BỘ mã hàng thuộc nhóm đó → mất trắng
+    // 0đ chiết khấu, KHÔNG có cảnh báo gì (giống hệt lớp lỗi "coGiaCongBo" đã gặp: sai lệch âm thầm).
+    // Nhóm hàng/Loại SP/Đặc tính/Công dụng/Quy cách LUÔN là mã phân loại (số nguyên hoặc mã chữ), không
+    // phải số đo liên tục — nên khi CẢ 2 giá trị đều parse được thành số hữu hạn, so sánh theo số ĐÃ LÀM
+    // TRÒN thay vì so chuỗi tuyệt đối, chấp nhận sai số định dạng nhỏ thay vì loại bỏ âm thầm.
+    const rvNum = Number(rv), ivNum = Number(iv);
+    if (Number.isFinite(rvNum) && Number.isFinite(ivNum)) return Math.round(rvNum) === Math.round(ivNum);
+    return false;
   });
 }
 
