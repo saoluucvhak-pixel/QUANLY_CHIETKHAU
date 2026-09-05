@@ -1399,6 +1399,35 @@ function runFormulaTests(){
         DB.catalog = catalogBak; DB.programs = programsBak; DB.purchases = purchasesBak;
       }
     });
+    // KHÓA HÀNH VI sau khi gộp computeReport()/evaluateProgramForPeriod() vào resolveProgramEvaluation_()
+    // (tối ưu code — rà soát lần nữa): ca biên "có Bậc điều kiện nhưng KHÔNG bậc nào khớp, ĐỒNG THỜI có
+    // khai Mục 7 gate (kh_tu_ngay/kh_den_ngay)" — trước khi gộp, 2 hàm trả hoanthanh KHÁC NHAU ở đúng ca
+    // này (evaluateProgramForPeriod trả %KH từ gate dù bậc chưa khớp; computeReport trả null). Bản gộp
+    // theo quy ước computeReport (null — "chưa khớp bậc thì không hiện %KH dễ gây hiểu nhầm"). Test này
+    // khoá đúng hành vi ĐÃ THỐNG NHẤT đó, tránh 1 lần sửa sau này vô tình làm 2 nơi lệch nhau trở lại.
+    test('computeReport (tích hợp): Bậc điều kiện KHÔNG khớp + có khai Khoảng ngày xét đạt KH (gate Mục 7) -> CHƯA đạt, %hoàn thành để trống (không lộ %KH thô từ gate)', ()=>{
+      const catalogBak = DB.catalog, programsBak = DB.programs, purchasesBak = DB.purchases,
+            dieukienBak = DB.dieukien, doanhthuBak = DB.doanhthu, kehoachBak = DB.kehoach, kehoachCTBak = DB.kehoachChiTiet;
+      try{
+        DB.catalog = { mhck: [ { mamh:'SP_U', tenhang:'Lốp U', thuonghieu:'U', nhomkh:'NO', loaisp:'NO', dactinh:'NO', congdung:'NO', quycach:'NO' } ], giacongbo: [] };
+        DB.purchases = [ { ngay:'2026-02-10', mahang:'SP_U', soluong:5, giatri:500000, nhacungcap:'NCC' } ]; // SL=5, không bậc nào bao gồm 5
+        DB.doanhthu = [ { id:'DT_U', ten:'U', dim_thuonghieu:'U', dim_nhomkh:'NO', dim_loaisp:'NO', dim_dactinh:'NO', dim_congdung:'NO', dim_quycach:'NO', thoidiem_ck:'Theo hiệu lực CTKM', cach_tinh_doanhso:'GIA_HOADON' } ];
+        DB.kehoach = [ { id:'KHU', ma_doanhthu:'ALL', dt_kehoach:1000000, sl_kehoach:0, hieuluctu:'2026-01-01', hieulucden:'2026-12-31' } ];
+        DB.kehoachChiTiet = [ { kehoach_id:'KHU', tu_ngay:'2026-01-01', den_ngay:'2026-12-31', dt_kehoach:1000000, sl_kehoach:0, ky:null } ];
+        DB.programs = [ { id:'P6', ma_chietkhau:'P6', dim_thuonghieu:'U', dim_nhomkh:'NO', dim_loaisp:'NO', dim_dactinh:'NO', dim_congdung:'NO', dim_quycach:'NO',
+          sl_min:0, sl_max:0, dt_min:0, dt_max:0, dieukien_sldt:'AND', ht_chietkhau:'PERCENT_GIAMUA', tl_ck:0, ma_doanhthu:'DT_U', dt_kehoach:0,
+          hieuluctu:'2026-01-01', hieulucden:'2026-12-31', kh_tu_ngay:'2026-01-01', kh_den_ngay:'2026-12-31' } ];
+        DB.dieukien = [ { id:'D6A', program_id:'P6', sl_min:1000, sl_max:0, dt_min:0, dt_max:0, dieukien_sldt:'AND', pct_kh_min:'', pct_kh_max:'', tl_ck:2, dt_kehoach:'' } ];
+        const rep = computeReport('2026-01-01','2026-12-31','', false, '', '');
+        const row = rep.find(r=>r.key==='prog_P6');
+        assertTrue(!!row, 'phải có dòng cho chương trình P6 (có mã hàng phát sinh mua)');
+        assertTrue(!row.dat && row.noBacMatched, 'SL=5 < ngưỡng bậc D6A (1000) -> phải CHƯA đạt, noBacMatched=true');
+        assertTrue(row.hoanthanh==null, '%hoàn thành phải để TRỐNG khi chưa khớp bậc nào, kể cả khi có khai gate riêng (không lộ %KH thô gây hiểu nhầm)');
+      } finally {
+        DB.catalog = catalogBak; DB.programs = programsBak; DB.purchases = purchasesBak;
+        DB.dieukien = dieukienBak; DB.doanhthu = doanhthuBak; DB.kehoach = kehoachBak; DB.kehoachChiTiet = kehoachCTBak;
+      }
+    });
 
     /* ---- Chiết khấu lũy kế (chiết khấu bổ sung): all_or_reduced ---- */
     DB.purchases = [
@@ -7025,14 +7054,20 @@ window.syncBonusPeriodFromMain = syncBonusPeriodFromMain;
 // "Tính chiết khấu bổ sung" — đảm bảo cả 2 nơi luôn tính theo đúng 1 công thức, không lặp code.
 async function autoComputeAndSaveMonthsForLuyKe_(baseProg, thangList, thoidiem, year, onProgress){
   let savedCount = 0, skippedCount = 0;
-  // TỐI ƯU: dựng map Danh mục nhóm CK / Giá công bố NCC 1 LẦN cho cả vòng lặp nhiều tháng, thay vì để
-  // computeReport() tự dựng lại từ đầu ở MỖI tháng (dữ liệu catalog không đổi giữa các tháng trong cùng 1
-  // lượt "Tự động tính & lưu" này) — xem giải thích tại evaluateProgramForPeriod().
-  const precomputedMaps = { map: mhckMap(), gcbMap: giaCongBoMap() };
+  // SỬA LỖI (code review sau khi tối ưu #3): KHÔNG dựng map 1 LẦN dùng chung cho cả vòng lặp ở đây — vòng
+  // lặp này có `await saveReportToSheet(...)` (network round-trip thật) giữa các tháng, nên trong lúc chờ,
+  // người dùng vẫn thao tác được ở màn hình khác (VD sửa Danh mục nhóm CK/Giá công bố NCC — 2 màn hình đó
+  // mutate DB.catalog.mhck/giacongbo TRỰC TIẾP bằng push()/splice()/gán lại theo index, không tạo mảng
+  // mới). Nếu cache map từ TRƯỚC vòng lặp, các tháng tính SAU thời điểm người dùng sửa sẽ ÂM THẦM dùng map
+  // CŨ (thiếu/sai mã hàng vừa sửa) mà không cảnh báo — đúng lớp lỗi "cache dựa theo reference mảng dễ bị
+  // cũ" mà evaluateProgramForPeriod() đã tự cảnh báo khi thêm tham số precomputedMaps. Dựng lại map TƯƠI
+  // ở ĐẦU MỖI vòng lặp (an toàn tuyệt đối, đúng hành vi gốc trước khi tối ưu) — computeBonusDiscount()/
+  // computeTamTinhChietKhau_() vẫn cache an toàn vì 2 hàm đó HOÀN TOÀN đồng bộ, không có await xen giữa.
   for(const m of thangList){
     if(onProgress) onProgress(m, year);
     const monthStart = toISO(new Date(year, m-1, 1));
     const monthEnd = toISO(new Date(year, m, 0));
+    const precomputedMaps = { map: mhckMap(), gcbMap: giaCongBoMap() };
     const rows = computeReport(monthStart, monthEnd, '', false, baseProg.id, thoidiem, precomputedMaps);
     const progRow = rows.find(r=>r.program && r.program.id===baseProg.id);
     if(!progRow){ skippedCount++; continue; }
