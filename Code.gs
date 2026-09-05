@@ -1090,7 +1090,7 @@ const HD_TOC_QUYTRINH_ = [
     ['hd-b6', '6. Danh mục chương trình'], ['hd-b7', '7. Mã chiết khấu & bậc'], ['hd-b8', '8. Chiết khấu lũy kế']
   ]},
   { lbl: 'IV. Vận hành hằng kỳ', items: [
-    ['hd-b9', '9. Tính chiết khấu'], ['hd-b10', '10. Báo cáo & đối chiếu']
+    ['hd-b9', '9. Tính chiết khấu'], ['hd-b9b', '9b. Chiết khấu tạm tính theo tháng'], ['hd-b10', '10. Báo cáo & đối chiếu']
   ]},
   { lbl: '', items: [ ['hd-faq', 'Mẹo & câu hỏi thường gặp'] ] },
 ];
@@ -1249,6 +1249,24 @@ const HD_CONTENT_QUYTRINH_ = `
         <li>Bấm <b>Lưu báo cáo</b> để ghi vào REPORT_CKTH/CKCT (cộng dồn, không mất kỳ trước), hoặc <b>Xuất Excel báo cáo</b>.</li>
       </ol>
       <div class="section-note" style="border-color:var(--red);color:var(--red)">Khung "Tính chiết khấu" và khung "Chiết khấu bổ sung" (lũy kế) bên dưới là <b>2 khu vực chọn kỳ độc lập</b>, không tự đồng bộ ngày — xem lại Bước 8 để tính nhanh nhiều tháng cùng lúc.</div>
+    </div>
+
+    <div class="card hd-step" id="hd-b9b">
+      <div class="card-head"><div><h2>Bước 9b — Chiết khấu tạm tính theo tháng <span class="tag tag-gold">mới</span></h2><div class="hint">Menu: Chiết khấu → Chiết khấu tạm tính theo tháng</div></div></div>
+      <div class="section-note" style="border-color:var(--red);color:var(--red)">Đây là công cụ ƯỚC TÍNH để có cơ sở BÁN HÀNG trong tháng đang chạy, dùng SONG SONG chứ KHÔNG THAY THẾ Bước 9 "Tính chiết khấu". Kết quả ở đây <b>không ghi vào REPORT_CKTH/CKCT</b> và không xuất hiện ở Bước 10 "Báo cáo &amp; đối chiếu" — số liệu chính thức để quyết toán/trả tiền vẫn luôn phải chạy và Lưu báo cáo ở Bước 9 cho đúng kỳ đã khép (tháng/quý/6 tháng/năm đã kết thúc).</div>
+      <p style="font-size:13px;color:var(--slate-600)">Lý do cần công cụ riêng: nhiều Mã chiết khấu tính theo Quý/6 Tháng/Năm — nếu đợi kỳ đó kết thúc mới biết % thì NPP/ĐL không có cơ sở % chiết khấu nào để chào giá bán ngay trong các tháng giữa kỳ. Trang này lấy % của <b>kỳ tham chiếu gần nhất ĐÃ HOÀN TẤT</b> làm tạm tính cho tháng hiện hành, theo đúng quy tắc chọn kỳ dưới đây (không tự suy diễn khác cho từng Mã chiết khấu):</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Thời điểm CK của Mã chiết khấu</th><th>Kỳ tham chiếu lấy % để tạm tính</th></tr></thead>
+        <tbody>
+          <tr><td>Tháng</td><td>Chính tháng hiện hành đang chạy</td></tr>
+          <tr><td>Quý</td><td>Quý hiện hành nếu tháng đang chạy là <b>tháng cuối quý</b> (3/6/9/12); các tháng khác trong quý → lấy % của <b>quý liền trước</b></td></tr>
+          <tr><td>6 Tháng</td><td>Nửa năm hiện hành nếu tháng đang chạy là <b>tháng 6 hoặc tháng 12</b>; các tháng khác → lấy % của <b>nửa năm liền trước</b></td></tr>
+          <tr><td>Năm</td><td>Năm hiện hành nếu tháng đang chạy là <b>tháng 12</b>; các tháng khác → lấy % của <b>năm liền trước</b></td></tr>
+        </tbody>
+      </table></div>
+      <p style="font-size:13px;color:var(--slate-600)">Doanh số/sản lượng dùng để so bậc và tính tiền tạm tính luôn lấy đúng mua hàng của <b>kỳ tham chiếu</b> ở bảng trên (không phải doanh số tháng hiện hành) — riêng cột Doanh số/Sản lượng hiển thị KPI đầu trang là của tháng hiện hành, chỉ để đối chiếu quy mô. Cơ chế chọn bậc, %KH, Mã doanh thu, "Không cộng vào Tổng CKTM" dùng lại NGUYÊN VẸN engine của Bước 9 (không có công thức tính riêng) — chỉ khác ở chỗ TỰ ĐỘNG chọn kỳ tham chiếu theo bảng trên thay vì để người dùng chọn Từ ngày–Đến ngày thủ công.</p>
+      <p style="font-size:13px;color:var(--slate-600)">Mặt hàng phát sinh mua trong tháng nhưng <b>chưa đủ Giá công bố NCC</b> cho toàn bộ sản lượng tháng đó: cột "CK cơ bản" (chênh lệch Giá công bố − Giá mua ở Báo cáo 4) tạm coi bằng 0đ (không suy diễn có lợi/bất lợi) và được đánh dấu rõ ở cột <b>Ghi chú</b> — bổ sung Giá công bố NCC (Bước 2) rồi tính lại để có số chính xác.</p>
+      <p style="font-size:13px;color:var(--slate-600)">2 báo cáo (Tổng hợp theo Nhóm hàng + Thương hiệu, Chi tiết theo mặt hàng) và Báo cáo 4 (Tổng hợp theo giá công bố) đều có thể lọc theo Nhóm hàng/Thương hiệu và xuất Excel.</p>
     </div>
 
     <div class="card hd-step" id="hd-b10">
