@@ -7670,10 +7670,20 @@ function renderReportResult(){
   // hơn thực tế. Nay dùng đúng tổng đã gộp theo mã hàng (không trùng lặp) mà computeReport() tính sẵn —
   // đảm bảo đúng tập mã hàng đang đối chiếu chiết khấu (khớp mặt hàng trong chiết khấu), không phải cộng
   // lại toàn bộ Sổ chi tiết mua hàng một cách độc lập.
-  const totalDT = rows.totalDT != null ? rows.totalDT : rows.reduce((s,r)=>s+r.dt,0);
+  // SỬA LỖI (rà soát theo phản ánh "mã này rõ ràng có doanh thu sao không tính chiết khấu"): khi đang lọc
+  // riêng 1 Mã chiết khấu cụ thể (program có giá trị), rows chỉ còn ĐÚNG 1 dòng (hoặc 0 dòng) của mã đó —
+  // TRƯỚC ĐÂY totalDT/totalDTGiaCongBo vẫn LUÔN lấy rows.totalDT/rows.totalDTGiaCongBo (tổng TOÀN BỘ Sổ
+  // chi tiết mua hàng trong kỳ, không lọc theo mã đang chọn) trong khi totalSL bên dưới lại tính ĐÚNG theo
+  // rows đã lọc — khiến KPI "Tổng doanh số theo hóa đơn" hiện số TOÀN BỘ sổ mua hàng (VD vài tỷ) đi kèm
+  // subtitle "0 sản phẩm" khi đúng mã đang chọn không có mã hàng nào phát sinh mua trong kỳ, gây hiểu lầm
+  // là bug. Nay: khi có lọc 1 mã cụ thể, dùng đúng tổng đã lọc (khớp totalSL, không có rủi ro cộng trùng
+  // vì luôn chỉ có tối đa 1 dòng); khi xem "Tất cả chương trình" (nhiều dòng, 1 mã hàng có thể thuộc nhiều
+  // chương trình cùng lúc), vẫn giữ nguyên rows.totalDT/rows.totalDTGiaCongBo (tổng đã gộp theo mã hàng,
+  // không trùng lặp) như trước.
+  const totalDT = program ? rows.reduce((s,r)=>s+r.dt,0) : (rows.totalDT != null ? rows.totalDT : rows.reduce((s,r)=>s+r.dt,0));
   // THEO YÊU CẦU (25/08/2026): "Doanh số theo giá công bố" song song với "Doanh số theo hóa đơn" (totalDT)
   // để đối chiếu — dùng đúng tổng đã gộp theo mã hàng (giống totalDT), không cộng trùng theo dòng chương trình.
-  const totalDTGiaCongBo = rows.totalDTGiaCongBo != null ? rows.totalDTGiaCongBo : rows.reduce((s,r)=>s+(r.dtGiaCongBo||0),0);
+  const totalDTGiaCongBo = program ? rows.reduce((s,r)=>s+(r.dtGiaCongBo||0),0) : (rows.totalDTGiaCongBo != null ? rows.totalDTGiaCongBo : rows.reduce((s,r)=>s+(r.dtGiaCongBo||0),0));
   // SỬA LỖI (rà soát 24/08/2026): loại các chương trình đã đánh dấu "Không cộng vào Tổng CKTM" (VD Mục 1
   // "CK cơ bản 10%" — đã nằm sẵn trong giá hóa đơn, KHÔNG phải khoản cộng thêm) khỏi KPI "Tổng chiết khấu
   // đạt được", tránh cộng trùng vào giá trị tổng hiển thị cho người dùng (xem isExcludedFromTotal_). Dòng
@@ -9143,10 +9153,12 @@ function exportReportXlsx(){
 
   // ---- Tính lại đúng các số KPI như renderReportResult() để sheet TongQuan khớp 100% với màn hình ----
   const totalSL = rows.reduce((s,r)=>s+r.sl,0);
-  const totalDT = rows.totalDT != null ? rows.totalDT : rows.reduce((s,r)=>s+r.dt,0);
+  // SỬA LỖI: đồng bộ đúng cách tính với renderReportResult() (xem giải thích đầy đủ ở đó) — khi đang lọc
+  // riêng 1 Mã chiết khấu, dùng tổng ĐÃ LỌC (khớp totalSL) thay vì tổng toàn bộ Sổ mua hàng trong kỳ.
+  const totalDT = program ? rows.reduce((s,r)=>s+r.dt,0) : (rows.totalDT != null ? rows.totalDT : rows.reduce((s,r)=>s+r.dt,0));
   // THEO YÊU CẦU (25/08/2026): "Doanh số theo giá công bố" song song với totalDT — để đối chiếu, xuất ra
   // cả trong sheet TongQuan lẫn thêm cột riêng ở bảng chính bên dưới.
-  const totalDTGiaCongBo = rows.totalDTGiaCongBo != null ? rows.totalDTGiaCongBo : rows.reduce((s,r)=>s+(r.dtGiaCongBo||0),0);
+  const totalDTGiaCongBo = program ? rows.reduce((s,r)=>s+(r.dtGiaCongBo||0),0) : (rows.totalDTGiaCongBo != null ? rows.totalDTGiaCongBo : rows.reduce((s,r)=>s+(r.dtGiaCongBo||0),0));
   const exclSet = buildExcludedFromTotalSet_();
   const totalCK = rows.reduce((s,r)=> s + ((r.program && exclSet.has(r.program.ma_chietkhau)) ? 0 : r.tienck), 0);
   const unmappedRow = rows.find(r=>r.key==='unmapped');
