@@ -4536,7 +4536,7 @@ function openLuyKeForm(idx, prefill){
     hieuluctu:'', hieulucden:'',
     kieu_tinh:'all_or_reduced', ck_reduced_pct:100,
     dk1_pct_thang_min:90, dk1_rate:0.5, dk2_pct_ky_min:110, dk2_rate:0.5,
-    ma_doanhthu_tinhck:'', ma_ck_quy:''
+    ma_doanhthu_tinhck:'', ma_ck_quy:'', nhomkh_loai_tru:''
   });
   const chinhOptions = DB.programs.map(p=>`<option value="${esc(p.id)}" ${row.ma_ck_chinh===p.id?'selected':''}>${esc(p.ma_chietkhau)} (${fmtDate(p.hieuluctu)}→${fmtDate(p.hieulucden)})</option>`).join('');
   const kt = row.kieu_tinh || 'all_or_reduced';
@@ -4606,13 +4606,19 @@ function openLuyKeForm(idx, prefill){
         Theo QĐ hỗ trợ chi bù CK hoàn thành KH tháng cho NPP/ĐL lốp ô tô: với TỪNG tháng đã chọn ở trên, nếu tháng đó KHÔNG tự đạt bậc của
         <b>Mã chiết khấu chính</b>, nhưng Mã chiết khấu Quý chọn dưới đây (cùng phạm vi mã hàng) đạt ≥100% kế hoạch của đúng Quý chứa tháng đó,
         hệ thống tính bù CK tháng theo tỷ lệ ứng với bậc Quý đã đạt, áp lên doanh số/sản lượng thật của tháng.
-        <b>Không áp dụng cho Casumina nhóm 12/NPP PCR Advenza-Milestar</b> — không chọn Mã chiết khấu Quý thuộc phạm vi đó ở đây.
       </div>
       <div class="field"><label>Mã chiết khấu Quý liên kết</label>
         <select id="lk_ma_ck_quy">
           <option value="">— Chọn Mã chiết khấu Quý —</option>
           ${DB.programs.filter(p=>p.thoidiem_ck==='Quý').map(p=>`<option value="${esc(p.id)}" ${row.ma_ck_quy===p.id?'selected':''}>${esc(p.ma_chietkhau||p.id)} (${fmtDate(p.hieuluctu)}→${fmtDate(p.hieulucden)})</option>`).join('')}
         </select>
+      </div>
+      <div class="field">
+        <label>Nhóm hàng LOẠI TRỪ khỏi chính sách bù <span class="hint">(Mã chiết khấu chính/Quý vẫn áp dụng chung cho mọi nhóm hàng — chỉ RIÊNG chính sách bù này không tính cho các nhóm chọn dưới đây, VD Casumina nhóm 12/NPP PCR Advenza-Milestar)</span></label>
+        <select id="lk_nhomkh_loaitru" multiple size="4">
+          ${(DB.catalog.nhomkh||[]).map(o=>`<option value="${esc(o.ma)}" ${String(row.nhomkh_loai_tru||'').split(',').includes(o.ma)?'selected':''}>${esc(o.ma)} — ${esc(o.ten)}</option>`).join('')}
+        </select>
+        <div class="hint" style="margin-top:4px">Giữ Ctrl (hoặc Cmd trên Mac) để chọn nhiều nhóm hàng cùng lúc. Để trống = không loại trừ nhóm nào.</div>
       </div>
     </div>
 
@@ -4652,9 +4658,10 @@ async function saveLuyKeForm(idx){
   const kieu_tinh = document.getElementById('lk_kieu_tinh').value;
   const ma_ck_quy = document.getElementById('lk_ma_ck_quy').value || '';
   if(kieu_tinh==='bu_theo_quy' && !ma_ck_quy){ toast('Vui lòng chọn Mã chiết khấu Quý liên kết cho kiểu tính "Bù CK tháng theo Quý"','err'); return; }
+  const nhomkh_loai_tru = Array.from(document.getElementById('lk_nhomkh_loaitru').selectedOptions).map(o=>o.value).join(',');
   const row = {
     id: idx!=null ? DB.programsLuyKe[idx].id : uid(),
-    ma_ck_chinh, thang_luyke, ma_ck_quy,
+    ma_ck_chinh, thang_luyke, ma_ck_quy, nhomkh_loai_tru,
     ma_doanhthu_tinhck: document.getElementById('lk_ma_doanhthu_tinhck').value || '',
     thoidiem_ck: document.getElementById('lk_thoidiem_ck').value,
     tt_ck_bosung: document.getElementById('lk_tt_ck_bosung').value,
@@ -6931,6 +6938,12 @@ function computeQuyBuLuyKe_(lk, baseProg, thangList, fromDate, toDate){
   if(!quyProg) return { ok:false, error:'Chương trình lũy kế này chưa liên kết "Mã chiết khấu Quý" — vào sửa lại ở tab "Chiết khấu lũy kế" (Kiểu tính "Bù CK tháng theo Quý").' };
   const precomputedMaps = { map: mhckMap(), gcbMap: giaCongBoMap() };
   const year = yearOfISO_(fromDate);
+  // Chương trình chính/Quý vẫn áp dụng CHUNG cho mọi Nhóm hàng — riêng CHÍNH SÁCH BÙ này có thể khai loại
+  // trừ 1 vài Nhóm hàng cụ thể (VD Casumina nhóm 12/NPP PCR Advenza-Milestar không thuộc diện hỗ trợ) mà
+  // KHÔNG cần tách riêng Mã chiết khấu/Mã doanh thu khác — chỉ ảnh hưởng tới việc TÍNH TIỀN bù (mã hàng
+  // thuộc nhóm loại trừ không được cộng vào tienckThang/skuDetails), KHÔNG ảnh hưởng tới việc tháng có tự
+  // đạt bậc CHÍNH của nó hay không (đó là chính sách CK tháng bình thường, tách biệt hoàn toàn).
+  const excludedNhomKh = new Set(String(lk.nhomkh_loai_tru||'').split(',').map(x=>norm(x)).filter(Boolean));
   const skuAgg = {};
   const monthChecks = thangList.map(m=>{
     const monthStart = toISO(new Date(year, m-1, 1));
@@ -6956,8 +6969,9 @@ function computeQuyBuLuyKe_(lk, baseProg, thangList, fromDate, toDate){
         note:`Tháng chưa đạt, Quý cũng chưa đạt 100% KH (mới ${quyEv.hoanthanh.toFixed(1)}%) — không đủ điều kiện tính bù.` };
     }
     const effQuy = quyEv.effectiveProg || quyProg;
-    let tienckThang = 0;
+    let tienckThang = 0, excludedSl = 0;
     (monthActual.matchingSkus||[]).forEach(s=>{
+      if(excludedNhomKh.size && excludedNhomKh.has(norm(s.dims && s.dims.nhomkh))){ excludedSl += s.sl; return; }
       const giaCongBoTB = s.cbSL ? s.cbGT/s.cbSL : 0;
       const tienck = calcDiscountForProgram(effQuy, s.sl, s.dt, giaCongBoTB);
       tienckThang += tienck;
@@ -6967,7 +6981,8 @@ function computeQuyBuLuyKe_(lk, baseProg, thangList, fromDate, toDate){
       a.sl += s.sl; a.dt += s.dt; a.cbGT += (s.cbGT||0); a.cbSL += (s.cbSL||0); a.tienck += tienck;
     });
     return { thang:m, status:'BU_QUY', pct: monthActual.hoanthanh, hoanthanhQuy: quyEv.hoanthanh, quyFrom:period.from, quyTo:period.to,
-      tienckThang, note:`Tháng chưa đạt, Quý đạt ${quyEv.hoanthanh.toFixed(1)}% KH → tính bù theo tỷ lệ CK của Mã chiết khấu Quý "${quyProg.ma_chietkhau||quyProg.id}".` };
+      tienckThang, note:`Tháng chưa đạt, Quý đạt ${quyEv.hoanthanh.toFixed(1)}% KH → tính bù theo tỷ lệ CK của Mã chiết khấu Quý "${quyProg.ma_chietkhau||quyProg.id}".`
+        + (excludedSl ? ` (đã loại trừ ${fmtNum(excludedSl)} sản phẩm thuộc nhóm hàng không áp dụng bù.)` : '') };
   });
   const skuDetails = Object.values(skuAgg).map(a=>({
     mahang:a.mahang, tenhang:a.tenhang, sl:a.sl, dt:a.dt, dtGiaCongBo:a.cbGT,
@@ -7074,7 +7089,7 @@ function renderBonusResult(){
       <div class="kpi"><div class="lbl">Tỷ lệ CK bình quân gia quyền</div><div class="val" style="font-size:16px">${fmtPct(r.effectiveRatePct)}</div><div class="sub">tham khảo — mỗi tháng áp đúng bậc Quý tại thời điểm tính</div></div>
       <div class="kpi accent-gold"><div class="lbl">Tổng chiết khấu bù theo Quý</div><div class="val mono" style="font-size:20px">${fmtVND(r.tienck)}</div><div class="sub">TT: ${esc(ttCkLabel(r.lk.tt_ck_bosung))}</div></div>
     </div>
-    <div class="section-note">Không áp dụng cho Casumina nhóm 12/NPP PCR Advenza-Milestar — kiểm tra lại Mã chiết khấu Quý đã liên kết ở tab "Chiết khấu lũy kế" nếu chương trình chính thuộc phạm vi đó.</div>
+    ${String(r.lk.nhomkh_loai_tru||'').split(',').filter(Boolean).length ? `<div class="section-note">Đã loại trừ nhóm hàng khỏi chính sách bù này: <b>${esc(String(r.lk.nhomkh_loai_tru).split(',').filter(Boolean).join(', '))}</b> — sửa lại ở tab "Chiết khấu lũy kế" nếu cần thay đổi.</div>` : `<div class="section-note">Chưa khai nhóm hàng loại trừ nào cho chính sách bù này — nếu chương trình chính có bao phủ Casumina nhóm 12/NPP PCR Advenza-Milestar, vào tab "Chiết khấu lũy kế" khai loại trừ nhóm đó trước khi lưu báo cáo.</div>`}
   ` : isDual ? `
     <div class="grid grid-4">
       <div class="kpi"><div class="lbl">Chương trình chính</div><div class="val mono" style="font-size:15px">${esc(r.baseProg.ma_chietkhau)}</div><div class="sub">${fmtDate(r.from)} → ${fmtDate(r.to)}</div></div>
