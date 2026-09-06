@@ -586,18 +586,20 @@ function fullReloadFromSheet(resolve, reject){
   // dưới 100 dòng) để mở nhanh, ổn định, gần như không thể timeout. Giá công bố (1.365 dòng) và
   // Mua hàng (1.435 dòng) KHÔNG tự tải nữa — mỗi menu đó sẽ tự tải riêng khi người dùng vào tới,
   // qua ensureGiaCongBoLoaded()/ensurePurchasesLoaded() bên dưới.
-  callServerFnRetry_('loadCoreData', r => !r || !r.catalog || !Array.isArray(r.programs), 2, 1500)
-    .then(core => {
+  // TỐI ƯU TỐC ĐỘ TẢI: loadCoreData() và việc tải DM_DIEUKIEN theo chunk là 2 lượt gọi ĐỘC LẬP hoàn
+  // toàn (đọc 2 sheet khác nhau, không phụ thuộc kết quả của nhau) — trước đây xếp NỐI TIẾP nhau
+  // (chờ loadCoreData xong mới bắt đầu gọi DIEUKIEN), cộng dồn thời gian round-trip của cả 2. Nay chạy
+  // SONG SONG bằng Promise.all — tổng thời gian chờ chỉ còn bằng lượt gọi chậm hơn, không phải tổng
+  // của cả 2.
+  Promise.all([
+    callServerFnRetry_('loadCoreData', r => !r || !r.catalog || !Array.isArray(r.programs), 2, 1500),
+    loadInChunks_('getDieuKienRowCount', 'loadDieuKienChunk', 500)
+  ])
+    .then(([core, dieukienRes]) => {
       if (!core || !core.catalog) throw new Error('Không tải được Danh mục/Chương trình sau nhiều lần thử.');
       core.catalog.giacongbo = DB._giacongboLoaded ? DB.catalog.giacongbo : [];
       core.purchases = DB._purchasesLoaded ? DB.purchases : [];
-      // DM_DIEUKIEN (bậc điều kiện con của mã chiết khấu) nay tải riêng theo chunk — cùng cơ chế
-      // phòng ngừa timeout như Giá công bố/Mua hàng, sẵn sàng chịu được khi dữ liệu tăng dần theo
-      // thời gian mà không cần đổi gì thêm ở đây.
-      return loadInChunks_('getDieuKienRowCount', 'loadDieuKienChunk', 500)
-        .then(res => { core.dieukien = rowsToObjects_(res.headers, res.rows); return core; });
-    })
-    .then(core => {
+      core.dieukien = rowsToObjects_(dieukienRes.headers, dieukienRes.rows);
       applyLoadedData(core);
       if (core.version) writeCache(core.version, snapshotDB());
       resolve();
@@ -1419,6 +1421,24 @@ function loadingPane_(msg){
   const el = document.getElementById('content');
   if(el) el.innerHTML = `<div class="empty"><div class="big">🔄</div>${esc(msg||'Đang tải dữ liệu...')}</div>`;
 }
+// TỐI ƯU TỐC ĐỘ TẢI: nhiều màn hình cần 2 bảng lớn ĐỘC LẬP nhau (VD Giá công bố + Mua hàng, hay Mua
+// hàng + Báo cáo chi tiết) — trước đây gọi await lần lượt (tải xong bảng này mới bắt đầu tải bảng kia),
+// cộng dồn thời gian chờ của cả 2 lượt round-trip. Vì các ensure*Loaded() bên dưới ghi vào các khoá
+// DB khác nhau, hoàn toàn không phụ thuộc kết quả của nhau, nên chạy Promise.allSettled SONG SONG là an
+// toàn — tổng thời gian chờ chỉ còn bằng lượt chậm nhất, không phải tổng của cả 2. Chỉ những mục thực
+// sự CHƯA tải (need=true) mới được gọi; lỗi của từng mục vẫn báo riêng như cũ, không làm dừng mục còn lại.
+async function loadIndependentPairs_(items){
+  const pending = items.filter(it => it.need);
+  if(!pending.length) return;
+  loadingPane_('Đang tải dữ liệu: ' + pending.map(it => it.label).join(', ') + '...');
+  const results = await Promise.allSettled(pending.map(it => it.loader()));
+  results.forEach((r, i) => {
+    if(r.status === 'rejected'){
+      const e = r.reason;
+      toast('Lỗi tải ' + pending[i].label + ': ' + (e && e.message ? e.message : e), 'err');
+    }
+  });
+}
 async function routeContent(){
   if(UI.tab==='dashboard'){
     // Dashboard cần Mua hàng để tính doanh thu tháng này -> tải trước nếu chưa có
@@ -1433,23 +1453,31 @@ async function routeContent(){
   else if(UI.tab==='programs') renderProgramsHub();
   else if(UI.tab==='purchases') renderPurchases(); // đọc thẳng Sheet theo trang, chỉ khi bấm "Lọc" (xem queryPurchasesPage)
   else if(UI.tab==='doichieu'){
-    if(!DB._giacongboLoaded){ loadingPane_('Đang tải dữ liệu Giá công bố NCC...'); try{ await ensureGiaCongBoLoaded(); }catch(e){ toast('Lỗi tải Giá công bố: '+(e.message||e),'err'); } }
-    if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
+    await loadIndependentPairs_([
+      { need: !DB._giacongboLoaded, loader: ensureGiaCongBoLoaded, label: 'Giá công bố' },
+      { need: !purchasesFullyLoaded_(), loader: ensurePurchasesLoaded, label: 'Mua hàng' }
+    ]);
     renderPriceCompare();
   }
   else if(UI.tab==='report'){
-    if(!DB._giacongboLoaded){ loadingPane_('Đang tải dữ liệu Giá công bố NCC cho Tính chiết khấu...'); try{ await ensureGiaCongBoLoaded(); }catch(e){ toast('Lỗi tải Giá công bố: '+(e.message||e),'err'); } }
-    if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng cho Tính chiết khấu...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
+    await loadIndependentPairs_([
+      { need: !DB._giacongboLoaded, loader: ensureGiaCongBoLoaded, label: 'Giá công bố' },
+      { need: !purchasesFullyLoaded_(), loader: ensurePurchasesLoaded, label: 'Mua hàng' }
+    ]);
     renderReport();
   }
   else if(UI.tab==='tamtinh'){
-    if(!DB._giacongboLoaded){ loadingPane_('Đang tải dữ liệu Giá công bố NCC cho Chiết khấu tạm tính...'); try{ await ensureGiaCongBoLoaded(); }catch(e){ toast('Lỗi tải Giá công bố: '+(e.message||e),'err'); } }
-    if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng cho Chiết khấu tạm tính...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
+    await loadIndependentPairs_([
+      { need: !DB._giacongboLoaded, loader: ensureGiaCongBoLoaded, label: 'Giá công bố' },
+      { need: !purchasesFullyLoaded_(), loader: ensurePurchasesLoaded, label: 'Mua hàng' }
+    ]);
     renderTamTinh();
   }
   else if(UI.tab==='baocao'){
-    if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng cho Báo cáo...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
-    if(!DB._reportCKCTLoaded){ loadingPane_('Đang tải dữ liệu Báo cáo chi tiết chiết khấu...'); try{ await ensureReportCKCTLoaded(); }catch(e){ toast('Lỗi tải Báo cáo chi tiết: '+(e.message||e),'err'); } }
+    await loadIndependentPairs_([
+      { need: !purchasesFullyLoaded_(), loader: ensurePurchasesLoaded, label: 'Mua hàng' },
+      { need: !DB._reportCKCTLoaded, loader: ensureReportCKCTLoaded, label: 'Báo cáo chi tiết chiết khấu' }
+    ]);
     renderBaoCao();
   }
   else if(UI.tab==='huongdan') renderHuongDan();
