@@ -1294,6 +1294,40 @@ function runDataHealthCheck_() {
     }
   });
 
+  // (f) Cột "Giá công bố" (DM_GIACONGBO/gia_congbo) bị Google Sheets TỰ ĐỘNG định dạng nhầm thành Ngày
+  // tháng — đúng lớp lỗi định dạng ô đã gặp thực tế với dim_nhomkh (xem sanitizeCellValue_/
+  // serialFromDate_ ở đầu file), nhưng ở đây readSheetRows_()/sanitizeCellValue_ đã TỰ KHÔI PHỤC đúng số
+  // tiền khi đọc nên KHÔNG có dấu hiệu gì bất thường trong dữ liệu ĐÃ ĐỌC (không như dim_nhomkh, phần
+  // thập phân lẻ lộ ra sau khôi phục) — phải đọc TRỰC TIẾP ô gốc trên Sheet (chưa sanitize) để phát hiện.
+  // Chỉ là cảnh báo "vệ sinh dữ liệu": không ảnh hưởng số tiền chiết khấu tính ra, nhưng định dạng kiểu
+  // này dễ vỡ khi mở/xuất bằng Excel thật (Excel có giới hạn năm hợp lệ, sẽ báo lỗi hoặc mất dữ liệu với
+  // các ô có serial ngày quá lớn như thế này).
+  {
+    const shGcb = getOrCreateSheet_(SpreadsheetApp.getActive(), SHEETS.GIACONGBO);
+    const lastRowGcb = shGcb.getLastRow(), lastColGcb = shGcb.getLastColumn();
+    if (lastRowGcb >= 2 && lastColGcb >= 1) {
+      const headersGcb = shGcb.getRange(1, 1, 1, lastColGcb).getValues()[0];
+      const iGia = headersGcb.indexOf('gia_congbo');
+      const iMaNcc = headersGcb.indexOf('mamh_ncc');
+      if (iGia > -1) {
+        const rawGcb = shGcb.getRange(2, 1, lastRowGcb - 1, lastColGcb).getValues();
+        const sample = [];
+        let dateFormatCount = 0;
+        rawGcb.forEach((r, idx) => {
+          if (r[iGia] instanceof Date) {
+            dateFormatCount++;
+            if (sample.length < 5) sample.push((iMaNcc > -1 && r[iMaNcc] ? r[iMaNcc] : ('dòng ' + (idx + 2))));
+          }
+        });
+        if (dateFormatCount > 0) {
+          addIssue('Ô Giá công bố đang bị định dạng nhầm thành Ngày tháng', 'warn', 'DM_GIACONGBO',
+            dateFormatCount + ' dòng có cột "gia_congbo" đang bị Sheet tự định dạng thành Ngày tháng (VD: ' + sample.join(', ') + (dateFormatCount > sample.length ? ', ...' : '') +
+            ') — app đã tự khôi phục đúng số tiền khi đọc (KHÔNG ảnh hưởng số tiền chiết khấu tính ra), nhưng nên bôi đen các ô này trên Sheet rồi Format > Số để làm sạch định dạng, tránh lỗi khi mở/xuất bằng Excel thật.');
+        }
+      }
+    }
+  }
+
   const summary = {
     total: issues.length,
     error: issues.filter(x => x.mucdo === 'error').length,
