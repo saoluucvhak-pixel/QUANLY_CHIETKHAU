@@ -522,16 +522,17 @@ function applyLoadedData(data){
   migrateDoanhSoBasisDefaults_(); // MỚI 24/08/2026: giữ đúng hành vi %KH-theo-giá-công-bố đã sửa cho Mục 3 (chạy nền)
 }
 // TỐI ƯU (giảm dung lượng cache localStorage, tránh vượt quota 5MB): trước đây snapshot cache đưa cả
-// Giá công bố (DB.catalog.giacongbo, ~1.365 dòng) và Sổ chi tiết mua hàng (DB.purchases, ~1.435 dòng)
-// vào localStorage — đây là 2 bảng LỚN NHẤT và TĂNG DẦN theo thời gian, dễ khiến cache vượt quota rồi
-// âm thầm không lưu được (trước đây không có cảnh báo gì, xem safeLocalSet ở trên). Nay CHỦ ĐỘNG loại
-// bỏ 2 bảng này khỏi cache — không ảnh hưởng tính đúng đắn vì 2 bảng này ĐÃ CÓ SẴN cơ chế tải riêng
-// theo chunk (ensureGiaCongBoLoaded/ensurePurchasesLoaded), tự tải ngay khi người dùng vào đúng menu
-// cần dùng, có thanh tiến độ + tự thử lại — bền hơn nhiều so với 1 khối cache lớn trong localStorage.
+// Giá công bố (DB.catalog.giacongbo, ~1.365 dòng), Sổ chi tiết mua hàng (DB.purchases, ~1.435 dòng) và
+// Báo cáo chi tiết (DB.reportCKCT, hàng nghìn dòng, tăng dần theo thời gian) vào localStorage — đây là
+// các bảng LỚN NHẤT và TĂNG DẦN, dễ khiến cache vượt quota rồi âm thầm không lưu được (trước đây không
+// có cảnh báo gì, xem safeLocalSet ở trên). Nay CHỦ ĐỘNG loại bỏ các bảng này khỏi cache — không ảnh
+// hưởng tính đúng đắn vì đều ĐÃ CÓ SẴN cơ chế tải riêng theo chunk (ensureGiaCongBoLoaded/
+// ensurePurchasesLoaded/ensureReportCKCTLoaded), tự tải ngay khi người dùng vào đúng menu cần dùng, có
+// thanh tiến độ + tự thử lại — bền hơn nhiều so với 1 khối cache lớn trong localStorage.
 function snapshotDB(){
   const catalogLight = Object.assign({}, DB.catalog);
   delete catalogLight.giacongbo;
-  return { catalog: catalogLight, programs: DB.programs, programsLuyKe: DB.programsLuyKe, reportCKTH: DB.reportCKTH, reportCKCT: DB.reportCKCT, chuongtrinh: DB.chuongtrinh, dieukien: DB.dieukien, doanhthu: DB.doanhthu, kehoach: DB.kehoach, kehoachChiTiet: DB.kehoachChiTiet };
+  return { catalog: catalogLight, programs: DB.programs, programsLuyKe: DB.programsLuyKe, reportCKTH: DB.reportCKTH, chuongtrinh: DB.chuongtrinh, dieukien: DB.dieukien, doanhthu: DB.doanhthu, kehoach: DB.kehoach, kehoachChiTiet: DB.kehoachChiTiet };
 }
 // Gọi 1 hàm server qua google.script.run dạng Promise (đơn giản, tuần tự, không có logic thử lại
 // phức tạp — bản trước dùng tự động thử lại song song nhưng gây tranh chấp/kết quả chập chờn).
@@ -618,6 +619,7 @@ function callChunkFn_(chunkFnName, offset, limit, extraArg){
     if (chunkFnName === 'loadPurchasesChunk') runner.loadPurchasesChunk(offset, limit);
     else if (chunkFnName === 'loadGiaCongBoChunk') runner.loadGiaCongBoChunk(offset, limit);
     else if (chunkFnName === 'loadDieuKienChunk') runner.loadDieuKienChunk(offset, limit);
+    else if (chunkFnName === 'loadReportCKCTChunk') runner.loadReportCKCTChunk(offset, limit);
     else if (chunkFnName === 'loadPurchasesChunkBySupplier') runner.loadPurchasesChunkBySupplier(extraArg, offset, limit);
     else reject(new Error('Hàm tải gói không xác định: ' + chunkFnName));
   });
@@ -632,6 +634,7 @@ function callCountFn_(countFnName, extraArg){
     if (countFnName === 'getPurchasesRowCount') runner.getPurchasesRowCount();
     else if (countFnName === 'getGiaCongBoRowCount') runner.getGiaCongBoRowCount();
     else if (countFnName === 'getDieuKienRowCount') runner.getDieuKienRowCount();
+    else if (countFnName === 'getReportCKCTRowCount') runner.getReportCKCTRowCount();
     else if (countFnName === 'getPurchasesRowCountBySupplier') runner.getPurchasesRowCountBySupplier(extraArg);
     else reject(new Error('Hàm đếm dòng không xác định: ' + countFnName));
   });
@@ -844,6 +847,23 @@ async function ensurePurchasesLoadedFiltered(suppliers, force){
   DB._purchasesScope = wanted;
 }
 window.ensurePurchasesLoadedFiltered = ensurePurchasesLoadedFiltered;
+// Tải riêng REPORT_CKCT (Báo cáo chi tiết theo mã hàng) khi cần — chỉ dùng ở tab "Báo cáo chiết khấu"/
+// "Tra cứu chiết khấu" (xem router bên dưới), KHÔNG cần cho tính chiết khấu hay bất kỳ màn nào khác. Đã
+// chuyển ra khỏi loadCoreData() (Code.gs) vì đây là bảng LỚN NHẤT còn lại tính vào lúc mở app (hàng nghìn
+// dòng thật, tăng dần theo thời gian) trong khi phần lớn người dùng không mở tab Báo cáo mỗi lần vào app.
+async function ensureReportCKCTLoaded(force){
+  if (DB._reportCKCTLoaded && !force) return;
+  const res = await loadInChunks_('getReportCKCTRowCount', 'loadReportCKCTChunk', 300,
+    (loaded, total) => loadingPane_(`Đang tải Báo cáo chi tiết chiết khấu... ${loaded}/${total} dòng`));
+  const newData = rowsToObjects_(res.headers, res.rows);
+  if (newData.length === 0 && DB._reportCKCTLoaded && DB.reportCKCT.length > 0) {
+    throw new Error('Máy chủ trả về 0 dòng bất thường — đã GIỮ NGUYÊN dữ liệu cũ, chưa ghi đè. Vui lòng thử lại sau ít phút.');
+  }
+  DB.reportCKCT = newData;
+  normalizeDateFields_(DB.reportCKCT, ['ngay_tinh','tu_ngay','den_ngay']);
+  DB._reportCKCTLoaded = true;
+}
+window.ensureReportCKCTLoaded = ensureReportCKCTLoaded;
 function loadAll() {
   return new Promise((resolve, reject) => {
     try {
@@ -860,6 +880,7 @@ function loadAll() {
             DB._giacongboLoaded = (DB.catalog.giacongbo||[]).length > 0;
             DB._purchasesLoaded = (DB.purchases||[]).length > 0;
             DB._purchasesScope = DB._purchasesLoaded ? 'all' : null;
+            DB._reportCKCTLoaded = (DB.reportCKCT||[]).length > 0;
             resolve();
             return;
           }
@@ -882,16 +903,18 @@ function forceRefreshData(){
   toast('Đang tải lại dữ liệu từ Google Sheet...', 'ok');
   const wasGcbLoaded = DB._giacongboLoaded;
   const wasPurScope = DB._purchasesScope; // 'all' | mảng NCC đã lọc | null (chưa tải gì)
+  const wasCkctLoaded = DB._reportCKCTLoaded;
   new Promise((resolve, reject) => fullReloadFromSheet(resolve, reject))
     .then(async () => {
-      // Nếu trước đó Giá công bố/Mua hàng đã từng được tải, tải lại luôn phần đó cho mới nhất
-      // (vì fullReloadFromSheet giờ chỉ tải phần nhẹ theo mặc định).
+      // Nếu trước đó Giá công bố/Mua hàng/Báo cáo chi tiết đã từng được tải, tải lại luôn phần đó cho
+      // mới nhất (vì fullReloadFromSheet giờ chỉ tải phần nhẹ theo mặc định).
       if (wasGcbLoaded) await ensureGiaCongBoLoaded(true);
       // THEO YÊU CẦU: nếu trước đó người dùng chỉ đang xem Mua hàng LỌC theo 1 số NCC (ở tab Sổ chi
       // tiết mua hàng), "Làm mới dữ liệu" cũng chỉ tải lại ĐÚNG các NCC đó — không âm thầm tải lại
       // TOÀN BỘ ~1.400+ dòng (đi ngược lại đúng mục đích giảm tải mà tính năng lọc NCC hướng tới).
       if (wasPurScope === 'all') await ensurePurchasesLoaded(true);
       else if (Array.isArray(wasPurScope) && wasPurScope.length) await ensurePurchasesLoadedFiltered(wasPurScope, true);
+      if (wasCkctLoaded) await ensureReportCKCTLoaded(true);
       toast('Đã tải lại dữ liệu mới nhất từ Sheet', 'ok');
       try{
         renderShell();
@@ -1426,6 +1449,7 @@ async function routeContent(){
   }
   else if(UI.tab==='baocao'){
     if(!purchasesFullyLoaded_()){ loadingPane_('Đang tải dữ liệu Mua hàng cho Báo cáo...'); try{ await ensurePurchasesLoaded(); }catch(e){ toast('Lỗi tải Mua hàng: '+(e.message||e),'err'); } }
+    if(!DB._reportCKCTLoaded){ loadingPane_('Đang tải dữ liệu Báo cáo chi tiết chiết khấu...'); try{ await ensureReportCKCTLoaded(); }catch(e){ toast('Lỗi tải Báo cáo chi tiết: '+(e.message||e),'err'); } }
     renderBaoCao();
   }
   else if(UI.tab==='huongdan') renderHuongDan();

@@ -255,14 +255,20 @@ function readSheetRows_(sheetName) {
     });
 }
 function loadCoreData() {
-  const result = { catalog: {}, programs: [], programsLuyKe: [], reportCKTH: [], reportCKCT: [], chuongtrinh: [], dieukien: [], doanhthu: [], kehoach: [], kehoachChiTiet: [] };
+  const result = { catalog: {}, programs: [], programsLuyKe: [], reportCKTH: [], chuongtrinh: [], dieukien: [], doanhthu: [], kehoach: [], kehoachChiTiet: [] };
   ['THUONGHIEU','NHOMKH','LOAISP','DACTINH','CONGDUNG','QUYCACH','MHCK'].forEach(key => {
     result.catalog[key.toLowerCase()] = readSheetRows_(SHEETS[key]);
   });
   result.programs = readSheetRows_(SHEETS.PROGRAMS);
   result.programsLuyKe = readSheetRows_(SHEETS.LUYKE);
   result.reportCKTH = readSheetRows_(SHEETS.REPORT_CKTH);
-  result.reportCKCT = readSheetRows_(SHEETS.REPORT_CKCT);
+  // TỐI ƯU TỐC ĐỘ TẢI: REPORT_CKCT (báo cáo chi tiết theo từng mã hàng) là bảng LỚN NHẤT còn lại trong
+  // loadCoreData() (hàng nghìn dòng thật, tăng dần mỗi tháng lưu báo cáo — không phải "hàng trống ma" nên
+  // không lọc bớt được như readSheetRows_ đã làm) — nhưng chỉ thực sự cần khi người dùng mở tab "Báo cáo
+  // chiết khấu"/"Tra cứu chiết khấu", KHÔNG cần cho việc tính chiết khấu hay bất kỳ màn nào khác. Nay bỏ
+  // hẳn ra khỏi core load, chuyển sang tải riêng theo chunk (getReportCKCTRowCount/loadReportCKCTChunk
+  // bên dưới, cùng khuôn mẫu đã dùng cho Giá công bố/Mua hàng) qua ensureReportCKCTLoaded() ở Frontend,
+  // chỉ tải đúng lúc mở tab đó.
   result.chuongtrinh = readSheetRows_(SHEETS.CHUONGTRINH);
   // DM_DIEUKIEN KHÔNG đọc nguyên khối ở đây nữa — Frontend tự tải riêng theo chunk qua
   // getDieuKienRowCount()/loadDieuKienChunk() ngay sau khi gọi loadCoreData(), cùng cơ chế phòng
@@ -285,6 +291,9 @@ function getSheetRowCount_(sheetKey) {
 }
 function getPurchasesRowCount() { return getSheetRowCount_('PURCHASES'); }
 function getGiaCongBoRowCount() { return getSheetRowCount_('GIACONGBO'); }
+// Tải riêng REPORT_CKCT theo chunk (xem giải thích tại loadCoreData()) — cùng khuôn mẫu Purchases/GiaCongBo.
+function getReportCKCTRowCount() { return getSheetRowCount_('REPORT_CKCT'); }
+function loadReportCKCTChunk(offset, limit) { return readSheetChunk_(SHEETS.REPORT_CKCT, offset, limit); }
 // TỐI ƯU (phòng ngừa): DM_DIEUKIEN (bậc điều kiện con của mã chiết khấu, Tầng 3) hiện còn nhỏ nên
 // vẫn đọc trong loadCoreData(), nhưng bổ sung sẵn cặp hàm đếm dòng + tải chunk cùng khuôn mẫu với
 // Giá công bố/Mua hàng — để Frontend có thể chuyển sang tải theo gói nhỏ ngay khi cần, không phải
