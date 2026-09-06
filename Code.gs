@@ -756,16 +756,36 @@ function saveSheetData(sheetName, data, forceEmpty) {
     const ownedByAny = data.some(r => r && Object.prototype.hasOwnProperty.call(r, h));
     if (!ownedByAny) orphanCols[h] = true;
   });
-  let oldValuesByRow = null;
+  // SỬA LỖI (rà soát code review): bước giữ giá trị cột "mồ côi" TRƯỚC ĐÂY đối chiếu dòng CŨ↔MỚI THEO VỊ
+  // TRÍ (oldValuesByRow[i] ứng với data[i]) — SAI khi "data" (mảng trong bộ nhớ) đã bị xoá/thêm dòng Ở
+  // GIỮA trước khi lưu (VD deleteProgram() gọi DB.programs.splice(idx,1)): mọi dòng SAU điểm xoá bị lệch
+  // vị trí đi 1 so với thứ tự THẬT trên Sheet (chưa ghi), khiến orphan-column của các dòng đó bị gán
+  // NHẦM sang dòng liền kề — corrupt âm thầm đúng cột đang cố bảo vệ. Nay đối chiếu theo CỘT NHẬN DẠNG ỔN
+  // ĐỊNH (thử lần lượt 'id' rồi 'mamh' — đủ dùng cho mọi sheet có orphan-column thực tế: PROGRAMS/
+  // DIEUKIEN/DOANHTHU/KEHOACH/KEHOACH_CHITIET/CHUONGTRINH/LUYKE dùng 'id', riêng MHCK dùng 'mamh') thay
+  // vì vị trí — chỉ khi KHÔNG có cột nhận dạng nào dùng được mới rơi về đối chiếu theo vị trí như cũ.
+  const KEY_CANDIDATES_ = ['id', 'mamh'];
+  let keyColIdx = -1, keyName = null;
+  for (const k of KEY_CANDIDATES_) {
+    const ci = existingHeaders.indexOf(k);
+    if (ci > -1 && data.every(r => r && r[k] !== '' && r[k] != null)) { keyColIdx = ci; keyName = k; break; }
+  }
+  let oldValuesByRow = null, oldValuesByKey = null;
   if (Object.keys(orphanCols).length && existingRowCount > 0) {
     oldValuesByRow = sh.getRange(2, 1, existingRowCount, existingHeaders.length).getValues();
+    if (keyName) {
+      oldValuesByKey = {};
+      oldValuesByRow.forEach(row => { const kv = row[keyColIdx]; if (kv !== '' && kv != null) oldValuesByKey[kv] = row; });
+    }
   }
   const values = data.map((r, i) => headers.map(h => {
     if (orphanCols[h]) {
-      if (oldValuesByRow && i < oldValuesByRow.length) {
-        const ci = existingHeaders.indexOf(h);
-        return ci > -1 ? oldValuesByRow[i][ci] : '';
+      const ci = existingHeaders.indexOf(h);
+      if (ci === -1) return '';
+      if (keyName && oldValuesByKey && Object.prototype.hasOwnProperty.call(oldValuesByKey, r[keyName])) {
+        return oldValuesByKey[r[keyName]][ci];
       }
+      if (oldValuesByRow && i < oldValuesByRow.length) return oldValuesByRow[i][ci];
       return '';
     }
     return r[h] ?? '';
