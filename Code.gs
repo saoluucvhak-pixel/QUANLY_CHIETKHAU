@@ -8,8 +8,18 @@ const SHEETS = {
   // chiết khấu). Tầng 2 (mã chiết khấu) vẫn dùng đúng sheet PROGRAMS cũ, chỉ bổ sung thêm cột liên kết.
   CHUONGTRINH: 'DM_CHUONGTRINH', DIEUKIEN: 'DM_DIEUKIEN',
   // MỚI: Danh mục tổng hợp doanh thu sản lượng (Mã doanh thu) + Danh mục kế hoạch doanh thu
-  DOANHTHU: 'DM_DOANHTHU', KEHOACH: 'DM_KEHOACH', KEHOACH_CHITIET: 'DM_KEHOACH_CHITIET'
+  DOANHTHU: 'DM_DOANHTHU', KEHOACH: 'DM_KEHOACH', KEHOACH_CHITIET: 'DM_KEHOACH_CHITIET',
+  // MỚI (LƯU TRỮ BÁO CÁO CŨ): REPORT_CKTH/REPORT_CKCT là 2 sheet TĂNG DẦN VĨNH VIỄN (mỗi lần "Lưu báo
+  // cáo" lại thêm dòng, không có gì tự động dọn bớt) — theo yêu cầu "sheet chính giữ 24 tháng gần nhất",
+  // các dòng có "den_ngay" cũ hơn 24 tháng được CHUYỂN (không xoá) sang 2 sheet Archive này qua
+  // archiveOldReportsForSheet_()/runArchiveOldReportsNow() bên dưới — giữ sheet chính luôn gọn, tải
+  // nhanh, trong khi dữ liệu cũ vẫn còn nguyên, tra cứu được lại bất cứ lúc nào qua nút "Tải dữ liệu lưu
+  // trữ" ở tab Báo cáo (ensureReportArchiveLoaded() ở Frontend).
+  REPORT_CKTH_ARCHIVE: 'REPORT_CKTH_ARCHIVE', REPORT_CKCT_ARCHIVE: 'REPORT_CKCT_ARCHIVE'
 };
+// Số tháng gần nhất giữ lại trên sheet CHÍNH (REPORT_CKTH/REPORT_CKCT) — phần còn lại được chuyển sang
+// sheet Archive tương ứng. Đổi số này rồi chạy lại "Lưu trữ báo cáo cũ" nếu muốn thay đổi ngưỡng.
+const REPORT_ARCHIVE_KEEP_MONTHS_ = 24;
 
 function doGet() {
   checkAccess_();
@@ -294,6 +304,13 @@ function getGiaCongBoRowCount() { return getSheetRowCount_('GIACONGBO'); }
 // Tải riêng REPORT_CKCT theo chunk (xem giải thích tại loadCoreData()) — cùng khuôn mẫu Purchases/GiaCongBo.
 function getReportCKCTRowCount() { return getSheetRowCount_('REPORT_CKCT'); }
 function loadReportCKCTChunk(offset, limit) { return readSheetChunk_(SHEETS.REPORT_CKCT, offset, limit); }
+// Tải dữ liệu LƯU TRỮ (REPORT_CKTH_ARCHIVE/REPORT_CKCT_ARCHIVE) theo chunk — cùng khuôn mẫu, chỉ gọi khi
+// người dùng chủ động bấm "Tải dữ liệu lưu trữ" ở tab Báo cáo (ensureReportArchiveLoaded() Frontend),
+// KHÔNG tự tải lúc mở app hay lúc mở tab Báo cáo bình thường.
+function getReportCKTHArchiveRowCount() { return getSheetRowCount_('REPORT_CKTH_ARCHIVE'); }
+function loadReportCKTHArchiveChunk(offset, limit) { return readSheetChunk_(SHEETS.REPORT_CKTH_ARCHIVE, offset, limit); }
+function getReportCKCTArchiveRowCount() { return getSheetRowCount_('REPORT_CKCT_ARCHIVE'); }
+function loadReportCKCTArchiveChunk(offset, limit) { return readSheetChunk_(SHEETS.REPORT_CKCT_ARCHIVE, offset, limit); }
 // TỐI ƯU (phòng ngừa): DM_DIEUKIEN (bậc điều kiện con của mã chiết khấu, Tầng 3) hiện còn nhỏ nên
 // vẫn đọc trong loadCoreData(), nhưng bổ sung sẵn cặp hàm đếm dòng + tải chunk cùng khuôn mẫu với
 // Giá công bố/Mua hàng — để Frontend có thể chuyển sang tải theo gói nhỏ ngay khi cần, không phải
@@ -1015,6 +1032,73 @@ function overwriteReportCKCT(rows) {
   return withLock_(() => { saveSheetData(SHEETS.REPORT_CKCT, rows); return bumpDataVersion_(); });
 }
 
+// ===== LƯU TRỮ BÁO CÁO CŨ (giữ REPORT_CKTH/REPORT_CKCT chỉ chứa 24 tháng gần nhất) =====
+// THEO YÊU CẦU: REPORT_CKTH/REPORT_CKCT tăng dần vĩnh viễn (mỗi lần "Lưu báo cáo" lại thêm dòng), khiến
+// sheet chính ngày càng lớn dù phần lớn nhu cầu chỉ xem báo cáo gần đây. Nay tách các dòng CŨ (den_ngay
+// nhỏ hơn ngưỡng REPORT_ARCHIVE_KEEP_MONTHS_ tháng) sang 2 sheet Archive riêng — KHÔNG XOÁ, chỉ DI
+// CHUYỂN, dữ liệu vẫn còn nguyên và tra cứu lại được bất cứ lúc nào qua ensureReportArchiveLoaded() ở
+// Frontend (nút "Tải dữ liệu lưu trữ" tab Báo cáo).
+function reportArchiveCutoffDate_() {
+  const now = new Date();
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - REPORT_ARCHIVE_KEEP_MONTHS_, 1);
+  return Utilities.formatDate(cutoff, Session.getScriptTimeZone() || 'GMT+7', 'yyyy-MM-dd');
+}
+// Cho Frontend hiển thị đúng ngưỡng hiện tại (không phải hardcode lại số tháng ở 2 nơi).
+function getReportArchiveCutoffDate() { return reportArchiveCutoffDate_(); }
+// Di chuyển các dòng CŨ của 1 sheet báo cáo (liveKey) sang sheet Archive tương ứng (archiveKey), dựa
+// trên cột "den_ngay" (ngày kết thúc kỳ báo cáo — cùng cột dùng làm 1 phần khoá upsert ở trên). Nếu
+// sheet chưa có cột này (không nên xảy ra với đúng cấu trúc REPORT_CKTH/CKCT hiện tại) -> bỏ qua an
+// toàn, không đoán mò dựa trên cột khác.
+function archiveOldReportsForSheet_(liveKey, archiveKey) {
+  const ss = SpreadsheetApp.getActive();
+  const sh = getOrCreateSheet_(ss, SHEETS[liveKey]);
+  const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return { archived: 0, kept: 0 };
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  const iDen = headers.indexOf('den_ngay');
+  if (iDen < 0) return { archived: 0, kept: 0 };
+  const cutoff = reportArchiveCutoffDate_();
+  const data = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const oldRowObjs = [], keepValues = [];
+  data.forEach(r => {
+    if (!r.some(c => String(c).trim() !== '')) return; // bỏ luôn dòng trắng khi ghi lại — dọn kèm, không cần bước riêng
+    const denVal = sanitizeCellValue_(r[iDen], 'den_ngay');
+    if (denVal && String(denVal) < cutoff) {
+      const obj = {};
+      headers.forEach((h, i) => obj[h] = sanitizeCellValue_(r[i], h));
+      oldRowObjs.push(obj);
+    } else {
+      keepValues.push(r);
+    }
+  });
+  if (!oldRowObjs.length) return { archived: 0, kept: keepValues.length };
+  // Ghi các dòng CŨ vào sheet Archive — CỘNG DỒN vào cuối (giữ nguyên dữ liệu Archive đã có từ các lần
+  // chạy trước), hội (union) header nếu Archive đang có cột khác/thiếu cột so với live.
+  const archiveSh = getOrCreateSheet_(ss, SHEETS[archiveKey]);
+  const archiveLastCol = archiveSh.getLastColumn();
+  let archiveHeaders = archiveLastCol > 0 ? archiveSh.getRange(1, 1, 1, archiveLastCol).getValues()[0] : [];
+  if (!archiveHeaders.some(h => h !== '')) archiveHeaders = [];
+  const unionArchiveHeaders = unionHeaders_(archiveHeaders, oldRowObjs);
+  if (unionArchiveHeaders.length !== archiveHeaders.length || unionArchiveHeaders.some((h, i) => h !== archiveHeaders[i])) {
+    archiveSh.getRange(1, 1, 1, unionArchiveHeaders.length).setValues([unionArchiveHeaders]);
+  }
+  const archiveValues = oldRowObjs.map(o => unionArchiveHeaders.map(h => (o[h] != null ? o[h] : '')));
+  archiveSh.getRange(archiveSh.getLastRow() + 1, 1, archiveValues.length, unionArchiveHeaders.length).setValues(archiveValues);
+  // Ghi lại sheet CHÍNH chỉ còn các dòng "giữ lại" (writeRowsEfficient_ đã có sẵn — ghi đè đúng vùng,
+  // dọn phần thừa còn sót nếu dữ liệu mới ít dòng hơn).
+  writeRowsEfficient_(sh, headers, keepValues);
+  return { archived: oldRowObjs.length, kept: keepValues.length };
+}
+// Gọi được trực tiếp từ nút "Lưu trữ báo cáo cũ" ở tab Bảo trì hệ thống.
+function runArchiveOldReportsNow() {
+  return withLock_(() => {
+    const cutoff = reportArchiveCutoffDate_();
+    const ckth = archiveOldReportsForSheet_('REPORT_CKTH', 'REPORT_CKTH_ARCHIVE');
+    const ckct = archiveOldReportsForSheet_('REPORT_CKCT', 'REPORT_CKCT_ARCHIVE');
+    return { cutoff, reportCKTH: ckth, reportCKCT: ckct, version: bumpDataVersion_() };
+  });
+}
+
 // ===== TEST KẾT NỐI TỐI GIẢN: không đọc/ghi Sheet, chỉ trả về thời gian máy chủ. Dùng để tách bạch
 // xem vấn đề nằm ở kết nối cơ bản (mạng/hạ tầng) hay ở việc đọc dữ liệu Sheet. =====
 function ping() {
@@ -1610,6 +1694,7 @@ const HD_CONTENT_QUYTRINH_ = `
         </tbody>
       </table></div>
       <p style="font-size:13px;color:var(--slate-600)">Ngoài ra: <b>Đối chiếu giá mua – giá công bố</b> giúp phát hiện mã hàng thiếu dữ liệu giá công bố (ảnh hưởng đến tính năng "doanh số theo giá công bố" ở Bước 4); nút <b>Kiểm tra chiết khấu trùng</b> và <b>Bảng theo dõi chiết khấu</b> ở đầu trang Báo cáo hỗ trợ rà soát trước khi chốt số liệu.</p>
+      <div class="section-note">🗄️ <b>Lưu trữ báo cáo cũ (mới):</b> để sheet REPORT_CKTH/REPORT_CKCT không phình to mãi, các kỳ báo cáo kết thúc <b>quá 24 tháng</b> được chuyển (không xoá) sang 2 sheet lưu trữ riêng qua nút "Lưu trữ báo cáo cũ ngay" ở tab <b>Bảo trì hệ thống</b>. Muốn xem/tra cứu lại các kỳ đã lưu trữ, bấm nút <b>"🗄️ Tải dữ liệu lưu trữ"</b> ngay trên trang Báo cáo — dữ liệu cũ sẽ hiện chung với dữ liệu gần đây ở mọi chế độ xem, không cần thao tác gì thêm.</div>
     </div>
 
     <div class="card hd-step" id="hd-faq">

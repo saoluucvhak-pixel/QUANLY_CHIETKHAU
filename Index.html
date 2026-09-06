@@ -353,7 +353,18 @@ let DB = {
   // Tính chiết khấu, Báo cáo, Đối chiếu giá) PHẢI kiểm tra scope==='all', KHÔNG được chỉ kiểm tra
   // _purchasesLoaded — nếu không sẽ vô tình dùng dữ liệu THIẾU (mới lọc 1 phần) để tính chiết khấu,
   // gây SAI SỐ tài chính mà không có cảnh báo gì.
-  _purchasesScope: null
+  _purchasesScope: null,
+  // LƯU TRỮ BÁO CÁO CŨ: REPORT_CKTH/REPORT_CKCT trên Sheet chỉ còn giữ 24 tháng gần nhất (xem
+  // archiveOldReportsForSheet_ ở Code.gs) — phần cũ hơn nằm ở REPORT_CKTH_ARCHIVE/REPORT_CKCT_ARCHIVE.
+  // 2 mảng dưới đây giữ RIÊNG dữ liệu lưu trữ (chỉ tải khi người dùng chủ động bấm "Tải dữ liệu lưu
+  // trữ" ở tab Báo cáo) — KHÔNG gộp thẳng vào DB.reportCKTH/DB.reportCKCT để tránh snapshotDB() vô tình
+  // cache luôn cả lịch sử ngày càng lớn này vào localStorage (đúng lỗi đã tránh khi tách REPORT_CKCT ra
+  // khỏi loadCoreData() trước đó). allReportCKTH_()/allReportCKCT_() bên dưới gộp tạm 2 nguồn này lại
+  // CHỈ để ĐỌC ở các màn hình xem báo cáo/tra cứu — mọi chỗ GHI (lưu báo cáo mới, dọn trùng lặp) vẫn chỉ
+  // thao tác trên DB.reportCKTH/DB.reportCKCT (dữ liệu sống) như cũ.
+  _reportArchiveLoaded: false,
+  _archiveReportCKTH: [],
+  _archiveReportCKCT: []
 };
 let UI = { tab:'dashboard', catalogSub:'thuonghieu', reportResult:null, purchaseFilters:{} };
 // Kiểm tra Sổ mua hàng đã được tải ĐẦY ĐỦ (toàn bộ NCC) hay chưa — dùng ở MỌI nơi cần dữ liệu đầy đủ để
@@ -622,6 +633,8 @@ function callChunkFn_(chunkFnName, offset, limit, extraArg){
     else if (chunkFnName === 'loadGiaCongBoChunk') runner.loadGiaCongBoChunk(offset, limit);
     else if (chunkFnName === 'loadDieuKienChunk') runner.loadDieuKienChunk(offset, limit);
     else if (chunkFnName === 'loadReportCKCTChunk') runner.loadReportCKCTChunk(offset, limit);
+    else if (chunkFnName === 'loadReportCKTHArchiveChunk') runner.loadReportCKTHArchiveChunk(offset, limit);
+    else if (chunkFnName === 'loadReportCKCTArchiveChunk') runner.loadReportCKCTArchiveChunk(offset, limit);
     else if (chunkFnName === 'loadPurchasesChunkBySupplier') runner.loadPurchasesChunkBySupplier(extraArg, offset, limit);
     else reject(new Error('Hàm tải gói không xác định: ' + chunkFnName));
   });
@@ -637,6 +650,8 @@ function callCountFn_(countFnName, extraArg){
     else if (countFnName === 'getGiaCongBoRowCount') runner.getGiaCongBoRowCount();
     else if (countFnName === 'getDieuKienRowCount') runner.getDieuKienRowCount();
     else if (countFnName === 'getReportCKCTRowCount') runner.getReportCKCTRowCount();
+    else if (countFnName === 'getReportCKTHArchiveRowCount') runner.getReportCKTHArchiveRowCount();
+    else if (countFnName === 'getReportCKCTArchiveRowCount') runner.getReportCKCTArchiveRowCount();
     else if (countFnName === 'getPurchasesRowCountBySupplier') runner.getPurchasesRowCountBySupplier(extraArg);
     else reject(new Error('Hàm đếm dòng không xác định: ' + countFnName));
   });
@@ -866,6 +881,39 @@ async function ensureReportCKCTLoaded(force){
   DB._reportCKCTLoaded = true;
 }
 window.ensureReportCKCTLoaded = ensureReportCKCTLoaded;
+// Tải dữ liệu LƯU TRỮ (REPORT_CKTH_ARCHIVE + REPORT_CKCT_ARCHIVE) khi người dùng chủ động bấm "Tải dữ
+// liệu lưu trữ" ở tab Báo cáo — 2 lượt tải này ĐỘC LẬP nhau nên chạy song song qua loadIndependentPairs_
+// (cùng cơ chế vừa dùng để tối ưu tốc độ tải ở routeContent()). Kết quả giữ RIÊNG ở DB._archiveReportCKTH/
+// DB._archiveReportCKCT (xem giải thích tại khai báo DB ở trên) — KHÔNG gộp vào DB.reportCKTH/DB.reportCKCT.
+async function ensureReportArchiveLoaded(force){
+  if (DB._reportArchiveLoaded && !force) return;
+  await loadIndependentPairs_([
+    { need: true, loader: async () => {
+        const res = await loadInChunks_('getReportCKTHArchiveRowCount', 'loadReportCKTHArchiveChunk', 300,
+          (loaded, total) => loadingPane_(`Đang tải lưu trữ Báo cáo tổng hợp... ${loaded}/${total} dòng`));
+        DB._archiveReportCKTH = rowsToObjects_(res.headers, res.rows);
+        normalizeDateFields_(DB._archiveReportCKTH, ['ngay_tinh','tu_ngay','den_ngay']);
+      }, label: 'Lưu trữ báo cáo tổng hợp' },
+    { need: true, loader: async () => {
+        const res = await loadInChunks_('getReportCKCTArchiveRowCount', 'loadReportCKCTArchiveChunk', 300,
+          (loaded, total) => loadingPane_(`Đang tải lưu trữ Báo cáo chi tiết... ${loaded}/${total} dòng`));
+        DB._archiveReportCKCT = rowsToObjects_(res.headers, res.rows);
+        normalizeDateFields_(DB._archiveReportCKCT, ['ngay_tinh','tu_ngay','den_ngay']);
+      }, label: 'Lưu trữ báo cáo chi tiết' }
+  ]);
+  DB._reportArchiveLoaded = true;
+}
+window.ensureReportArchiveLoaded = ensureReportArchiveLoaded;
+// Gộp TẠM (chỉ để đọc) dữ liệu sống + dữ liệu lưu trữ (nếu đã tải) — dùng ở các màn XEM báo cáo/tra cứu/
+// kiểm tra "đã lưu chưa" (cần thấy được lịch sử đầy đủ để không hiển thị sai/không cảnh báo sót khi lưu
+// đè lên đúng 1 kỳ đã bị lưu trữ). TUYỆT ĐỐI KHÔNG dùng ở các chỗ GHI (lưu báo cáo mới, dọn dẹp trùng
+// lặp) — những chỗ đó phải tiếp tục thao tác trực tiếp trên DB.reportCKTH/DB.reportCKCT (dữ liệu sống).
+function allReportCKTH_(){
+  return (DB._reportArchiveLoaded && DB._archiveReportCKTH.length) ? (DB.reportCKTH||[]).concat(DB._archiveReportCKTH) : (DB.reportCKTH||[]);
+}
+function allReportCKCT_(){
+  return (DB._reportArchiveLoaded && DB._archiveReportCKCT.length) ? (DB.reportCKCT||[]).concat(DB._archiveReportCKCT) : (DB.reportCKCT||[]);
+}
 function loadAll() {
   return new Promise((resolve, reject) => {
     try {
@@ -2361,12 +2409,53 @@ function renderBaoTri(){
       <div id="backupResultWrap" style="margin-top:10px"></div>
     </div>
     <div class="card">
+      <div class="card-head"><div><h2>Lưu trữ báo cáo cũ</h2><div class="hint">REPORT_CKTH/REPORT_CKCT tăng dần vĩnh viễn (mỗi lần "Lưu báo cáo" lại thêm dòng) — chuyển các dòng có kỳ kết thúc CŨ HƠN 24 THÁNG sang 2 sheet lưu trữ riêng (REPORT_CKTH_ARCHIVE/REPORT_CKCT_ARCHIVE), giữ sheet chính luôn gọn để tải nhanh. KHÔNG XOÁ gì cả — dữ liệu cũ vẫn xem/tra cứu lại được bất cứ lúc nào qua nút "Tải dữ liệu lưu trữ" ở tab Báo cáo.</div></div></div>
+      <div class="btn-row">
+        <button class="btn btn-sm" id="btnRunArchive" onclick="runArchiveOldReportsUI()">${ICON.download||''} Lưu trữ báo cáo cũ ngay</button>
+      </div>
+      <div id="archiveResultWrap" style="margin-top:10px"><div class="hint" id="archiveCutoffHint">Đang lấy ngưỡng lưu trữ hiện tại...</div></div>
+    </div>
+    <div class="card">
       <div class="card-head"><div><h2>Kiểm tra tự động hằng ngày</h2><div class="hint">Tự sao lưu + quét sức khỏe dữ liệu lúc 2h sáng mỗi ngày, gửi email tóm tắt cho bạn — CHỈ gửi khi phát hiện vấn đề, không làm phiền khi mọi thứ vẫn ổn</div></div></div>
       <div id="triggerStatusWrap"><div class="hint">Đang kiểm tra trạng thái...</div></div>
     </div>
   `;
   refreshTriggerStatusUI();
+  google.script.run
+    .withSuccessHandler((cutoff)=>{
+      const el = document.getElementById('archiveCutoffHint');
+      if (el) el.innerHTML = `Ngưỡng hiện tại: các kỳ báo cáo kết thúc <b>trước ${esc(cutoff)}</b> sẽ được chuyển sang lưu trữ khi bấm nút trên.`;
+    })
+    .withFailureHandler(()=>{})
+    .getReportArchiveCutoffDate();
 }
+function runArchiveOldReportsUI(){
+  const btn = document.getElementById('btnRunArchive');
+  const wrap = document.getElementById('archiveResultWrap');
+  btn.disabled = true; btn.innerText = 'Đang lưu trữ...';
+  google.script.run
+    .withSuccessHandler((res)=>{
+      btn.disabled = false; btn.innerHTML = `${ICON.download||''} Lưu trữ báo cáo cũ ngay`;
+      const tong = (res.reportCKTH.archived||0) + (res.reportCKCT.archived||0);
+      wrap.innerHTML = tong
+        ? `<div class="section-note" style="border-color:var(--emerald);color:var(--emerald-dark)">Đã chuyển ${res.reportCKTH.archived} dòng tổng hợp + ${res.reportCKCT.archived} dòng chi tiết (kỳ kết thúc trước ${esc(res.cutoff)}) sang lưu trữ. Sheet chính còn lại ${res.reportCKTH.kept} dòng tổng hợp + ${res.reportCKCT.kept} dòng chi tiết.</div>`
+        : `<div class="hint">Không có dòng nào cũ hơn ngưỡng ${esc(res.cutoff)} cần lưu trữ — sheet chính đang gọn sẵn.</div>`;
+      toast('Đã lưu trữ '+tong+' dòng báo cáo cũ', 'ok');
+      // QUAN TRỌNG: REPORT_CKTH/REPORT_CKCT trên Sheet vừa bị GHI LẠI (bớt đi các dòng đã chuyển) —
+      // DB.reportCKTH/DB.reportCKCT trong bộ nhớ trình duyệt giờ đã CŨ hơn Sheet thật (vẫn còn giữ các
+      // dòng vừa chuyển đi). Nếu không tải lại ngay, "Dọn dẹp trùng lặp"/"Lưu báo cáo" sau đó có thể vô
+      // tình ghi lại đúng các dòng vừa lưu trữ (dựa trên bản cũ trong bộ nhớ) — dùng luôn cơ chế
+      // forceRefreshData() sẵn có để tải lại toàn bộ, đảm bảo khớp đúng Sheet mới nhất.
+      if (DB._reportArchiveLoaded) { DB._reportArchiveLoaded = false; DB._archiveReportCKTH = []; DB._archiveReportCKCT = []; }
+      forceRefreshData();
+    })
+    .withFailureHandler((err)=>{
+      btn.disabled = false; btn.innerHTML = `${ICON.download||''} Lưu trữ báo cáo cũ ngay`;
+      toast('Lưu trữ thất bại: '+(err && err.message?err.message:err), 'err');
+    })
+    .runArchiveOldReportsNow();
+}
+window.runArchiveOldReportsUI = runArchiveOldReportsUI;
 function runHealthCheckUI(){
   const btn = document.getElementById('btnRunHealthCheck');
   const wrap = document.getElementById('healthCheckResultWrap');
@@ -3276,7 +3365,7 @@ function openChuongTrinhDetail(ctId){
     })
   ];
   const rowsHtml = units.map(u=>{
-    const reports = DB.reportCKTH.filter(r=>String(r.program_id)===String(u.id));
+    const reports = allReportCKTH_().filter(r=>String(r.program_id)===String(u.id));
     const tongCK = reports.reduce((s,r)=>s+(Number(r.so_tien_chietkhau)||0),0);
     const soThangDaLuu = reports.length;
     const soThangDat = reports.filter(r=>norm(r.trangthai)==='DAT').length;
@@ -3289,7 +3378,7 @@ function openChuongTrinhDetail(ctId){
     </tr>`;
   }).join('');
   const grandTotal = units.reduce((s,u)=>{
-    const reports = DB.reportCKTH.filter(r=>String(r.program_id)===String(u.id));
+    const reports = allReportCKTH_().filter(r=>String(r.program_id)===String(u.id));
     return s + reports.reduce((s2,r)=>s2+(Number(r.so_tien_chietkhau)||0),0);
   },0);
   openModal(`
@@ -5459,7 +5548,7 @@ function buildDiscountTrackingData_(){
   // lại toàn bộ REPORT_CKTH mỗi lần.
   const ckthMap = new Map();
   const ckthByProgram = new Map(); // dùng riêng cho Chiết khấu lũy kế (xem bên dưới)
-  (DB.reportCKTH||[]).forEach(r=>{
+  allReportCKTH_().forEach(r=>{
     ckthMap.set(String(r.program_id||'')+'||'+String(r.tu_ngay||'')+'||'+String(r.den_ngay||''), r);
     const pid = String(r.program_id||'');
     if(!ckthByProgram.has(pid)) ckthByProgram.set(pid, []);
@@ -5696,9 +5785,13 @@ function exportDiscountTrackingXlsx(){
 }
 window.exportDiscountTrackingXlsx = exportDiscountTrackingXlsx;
 function renderBaoCao(){
+  const archiveBtnLabel = DB._reportArchiveLoaded
+    ? `🗄️ ✓ Đã tải lưu trữ (${DB._archiveReportCKTH.length + DB._archiveReportCKCT.length} dòng)`
+    : `🗄️ Tải dữ liệu lưu trữ (>24 tháng)`;
   document.getElementById('topbarActions').innerHTML = `
     <button class="btn" onclick="checkDuplicateReports()">${ICON.download||''} 🔍 Kiểm tra chiết khấu trùng</button>
     <button class="btn" onclick="showDiscountTrackingTable()">${ICON.download||''} 📋 Bảng theo dõi chiết khấu</button>
+    <button class="btn" onclick="loadReportArchiveUI()" title="Báo cáo cũ hơn 24 tháng đã được chuyển sang lưu trữ để sheet chính luôn gọn nhẹ — bấm để tải về xem/tra cứu chung với dữ liệu gần đây, không mất gì cả.">${archiveBtnLabel}</button>
   `;
   if(!UI._baocaoFilters){
     const now = new Date();
@@ -5724,14 +5817,29 @@ function renderBaoCao(){
 }
 function setBaoCaoView(v){ UI._baocaoFilters.view = v; renderBaoCao(); }
 window.setBaoCaoView = setBaoCaoView;
+// Tải dữ liệu LƯU TRỮ (báo cáo cũ hơn 24 tháng, đã chuyển sang REPORT_CKTH_ARCHIVE/REPORT_CKCT_ARCHIVE)
+// theo yêu cầu người dùng bấm nút — không tự động tải, để tra cứu bình thường luôn nhanh. Sau khi tải,
+// TOÀN BỘ các màn xem báo cáo/tra cứu trong tab này tự động thấy được dữ liệu cũ (qua allReportCKTH_()/
+// allReportCKCT_()) mà không cần thao tác gì thêm.
+async function loadReportArchiveUI(){
+  loadingPane_('Đang tải dữ liệu lưu trữ (báo cáo cũ hơn 24 tháng)...');
+  try{
+    await ensureReportArchiveLoaded();
+    toast(`Đã tải dữ liệu lưu trữ: ${DB._archiveReportCKTH.length} dòng tổng hợp, ${DB._archiveReportCKCT.length} dòng chi tiết`, 'ok');
+  }catch(e){
+    toast('Lỗi tải dữ liệu lưu trữ: '+(e && e.message?e.message:e), 'err');
+  }
+  renderBaoCao();
+}
+window.loadReportArchiveUI = loadReportArchiveUI;
 
 function renderBaoCaoBody(){
   const bf = UI._baocaoFilters;
   if(bf.view==='kylienke'){ renderBaoCaoKyLienKe(); return; }
   if(bf.view==='tracuu'){ renderBaoCaoTraCuu(); return; }
   const suppliers = [...new Set(DB.purchases.map(r=>r.nhacungcap).filter(Boolean))].sort();
-  const htList = [...new Set((DB.reportCKTH||[]).map(r=>r.hinh_thuc_chietkhau).filter(Boolean))];
-  const maCKList = [...new Set((DB.reportCKTH||[]).map(r=>r.ma_chietkhau).filter(Boolean))].sort();
+  const htList = [...new Set(allReportCKTH_().map(r=>r.hinh_thuc_chietkhau).filter(Boolean))];
+  const maCKList = [...new Set(allReportCKTH_().map(r=>r.ma_chietkhau).filter(Boolean))].sort();
   document.getElementById('baocaoBody').innerHTML = `
     <div class="card">
       <div class="grid grid-4">
@@ -5763,7 +5871,7 @@ window.applyBaoCaoFilters = applyBaoCaoFilters;
 function getFilteredCKCT(){
   const bf = UI._baocaoFilters;
   const exclSet = buildExcludedFromTotalSet_();
-  return (DB.reportCKCT||[]).filter(r=>{
+  return allReportCKCT_().filter(r=>{
     if(bf.from && r.tu_ngay < bf.from) return false;
     if(bf.to && r.den_ngay > bf.to) return false;
     if(bf.ht && r.hinh_thuc_chietkhau!==bf.ht) return false;
@@ -5937,7 +6045,7 @@ function runTraCuuChietKhau(){
   if(!mahang){ toast('Vui lòng nhập/chọn Mã hàng cần tra cứu','err'); return; }
   if(!from || !to){ toast('Vui lòng chọn khoảng ngày tra cứu','err'); return; }
   const key = norm(mahang);
-  const rows = (DB.reportCKCT||[]).filter(r=> norm(r.mahang)===key && r.tu_ngay<=to && r.den_ngay>=from)
+  const rows = allReportCKCT_().filter(r=> norm(r.mahang)===key && r.tu_ngay<=to && r.den_ngay>=from)
     .sort((a,b)=> String(a.tu_ngay||'').localeCompare(String(b.tu_ngay||'')));
   const muaRows = (DB.purchases||[]).filter(p=> norm(p.mahang)===key && p.ngay && p.ngay>=from && p.ngay<=to);
   const tongDoanhSoMua = muaRows.reduce((s,p)=>s+(Number(p.giatri)||0),0);
@@ -6228,7 +6336,7 @@ function periodBlockHtml(period){
   // "CK cơ bản 10%" — đã nằm sẵn trong giá hóa đơn) khỏi khối đối chiếu kỳ liền kề, để không cộng trùng
   // vào TỔNG khi so sánh giữa các kỳ (xem isExcludedFromTotal_).
   const exclSet = buildExcludedFromTotalSet_();
-  const recs = (DB.reportCKTH||[]).filter(r=> r.tu_ngay===period.from && r.den_ngay===period.to && !exclSet.has(r.ma_chietkhau));
+  const recs = allReportCKTH_().filter(r=> r.tu_ngay===period.from && r.den_ngay===period.to && !exclSet.has(r.ma_chietkhau));
   const total = recs.reduce((s,r)=>s+(Number(r.so_tien_chietkhau)||0),0);
   const rowsHtml = recs.map(r=>`<tr>
     <td class="mono">${esc(r.ma_chietkhau)}</td>
@@ -6530,7 +6638,7 @@ function buildReportSaveRows(){
 function findExistingReportConflicts_(ckthRows){
   const conflicts = [];
   (ckthRows||[]).forEach(row=>{
-    const existing = (DB.reportCKTH||[]).find(r=>
+    const existing = allReportCKTH_().find(r=>
       String(r.program_id)===String(row.program_id) &&
       String(r.tu_ngay)===String(row.tu_ngay) &&
       String(r.den_ngay)===String(row.den_ngay)
@@ -6747,7 +6855,7 @@ function findMonthReport_(programId, thoidiemCk, thang, year){
     Number(r.thang_chietkhau) === thang && Number(r.nam_chietkhau) === year
   );
   if (draftHit) return draftHit;
-  return (DB.reportCKTH || []).find(r =>
+  return allReportCKTH_().find(r =>
     String(r.program_id || '') === String(programId) &&
     String(r.thoidiem_chietkhau || '') === String(thoidiemCk || '') &&
     Number(r.thang_chietkhau) === thang && Number(r.nam_chietkhau) === year
@@ -6773,7 +6881,7 @@ async function autoRunAndSaveMonthsForLuyKe(){
   const existingMonths = thangList.filter(m=>{
     const monthStart = toISO(new Date(year, m-1, 1));
     const monthEnd = toISO(new Date(year, m, 0));
-    return (DB.reportCKTH||[]).some(r=>
+    return allReportCKTH_().some(r=>
       String(r.program_id)===String(baseProg.id) && String(r.tu_ngay)===monthStart && String(r.den_ngay)===monthEnd
     );
   });
