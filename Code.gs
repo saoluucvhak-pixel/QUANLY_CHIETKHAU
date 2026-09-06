@@ -1534,17 +1534,30 @@ const HD_CONTENT_QUYTRINH_ = `
 
     <div class="card hd-step" id="hd-b8">
       <div class="card-head"><div><h2>Bước 8 — Chiết khấu lũy kế</h2><div class="hint">Chiết khấu → Mã chiết khấu → tab con "Chiết khấu lũy kế"</div></div></div>
-      <p style="font-size:13px;color:var(--slate-600)">Dùng cho các khoản CK bổ sung phụ thuộc đạt liên tục nhiều tháng/kỳ (VD "đạt KH ≥100% liên tục 4 tháng thì +0,5%"). Mỗi dòng gắn 1 <b>Mã chiết khấu chính</b> và có 3 kiểu tính:</p>
+      <p style="font-size:13px;color:var(--slate-600)">Các khoản CK bổ sung phụ thuộc đạt liên tục nhiều tháng/kỳ. Mỗi dòng gắn 1 <b>Mã chiết khấu chính</b> và chọn 1 trong 3 kiểu tính:</p>
       <div class="grid grid-3" style="margin-bottom:10px">
-        <div class="hd-kv"><div class="k">Đạt tất cả các tháng</div><div class="v">Tất cả tháng đã chọn phải đạt; lỡ 1 tháng vẫn có thể hưởng % giảm trừ nếu cấu hình</div></div>
-        <div class="hd-kv"><div class="k">2 điều kiện độc lập</div><div class="v">ĐK1 (mỗi tháng ≥X%) và ĐK2 (cả kỳ ≥Y%) — đạt 1 hoặc cả 2 thì cộng % tương ứng</div></div>
-        <div class="hd-kv"><div class="k">Bù CK tháng theo Quý <span class="tag tag-gold" style="font-size:10px">mới</span></div><div class="v">Tháng nào không tự đạt bậc nhưng Quý chứa tháng đó đạt ≥100% KH quý thì tính bù CK tháng theo tỷ lệ của bậc Quý, áp lên doanh số thật của chính tháng đó</div></div>
+        <div class="hd-kv"><div class="k">1. Đạt tất cả các tháng</div><div class="v">Đủ tất cả tháng mới hưởng ĐẦY ĐỦ; lỡ 1 tháng vẫn có thể hưởng mức % giảm trừ nếu cấu hình</div></div>
+        <div class="hd-kv"><div class="k">2. 2 điều kiện độc lập</div><div class="v">ĐK1 (mỗi tháng ≥X%) và ĐK2 (cả kỳ ≥Y%) — đạt 1 hoặc cả 2 thì cộng % tương ứng</div></div>
+        <div class="hd-kv"><div class="k">3. Bù CK tháng theo Quý <span class="tag tag-gold" style="font-size:10px">mới</span></div><div class="v">Tháng lẻ không đạt vẫn có thể được bù, nếu Quý chứa tháng đó đạt kế hoạch — xem sơ đồ bên dưới</div></div>
       </div>
-      <p style="font-size:13px;color:var(--slate-600)">Cơ chế "Đạt tất cả các tháng"/"2 điều kiện độc lập" đọc lại báo cáo THÁNG <b>đã lưu</b> (REPORT_CKTH) — cần tính và lưu đủ các tháng liên quan (Bước 9) trước. Dùng nút <b>"Tự động tính & lưu cho các tháng đã chọn"</b> ở khung Chiết khấu bổ sung (trong Tính chiết khấu) để làm 1 lần cho tất cả, khỏi lặp lại thủ công.</p>
-      <div class="section-note" style="border-color:var(--gold);color:#8a6a1a;background:var(--gold-soft)">Nếu cần ngưỡng "đạt tháng" khác với mã CK tháng đang trả tiền thật (VD cần ≥100% trong khi mã chính đang ở ≥90%), tạo thêm 1 "mã cổng" (Tỷ lệ CK = 0, %KH Min = ngưỡng cần) rồi liên kết dòng lũy kế vào mã cổng đó thay vì mã đang trả tiền.</div>
-      <div class="section-note" style="border-color:var(--gold);color:#8a6a1a;background:var(--gold-soft)">
-        <b>Kiểu tính "Bù CK tháng theo Quý"</b> (theo QĐ hỗ trợ chi bù CK hoàn thành KH tháng cho NPP/ĐL lốp ô tô của Casumina): khác 2 kiểu trên, kiểu này <b>KHÔNG cần</b> đã lưu báo cáo tháng trước — mỗi lần bấm "Tính chiết khấu bổ sung", từng tháng đã chọn được tính LẠI TRỰC TIẾP từ Sổ chi tiết mua hàng tại đúng thời điểm bấm (mức chiết khấu chốt ngay lúc tính, không "quay lui" tính bù cho 1 thời điểm khác). Cần chọn thêm <b>"Mã chiết khấu Quý liên kết"</b> (1 Mã chiết khấu khác, cùng phạm vi mã hàng, Thời điểm chiết khấu = Quý) khi cấu hình dòng lũy kế này — hệ thống không tự dò, phải chọn đúng tay. Mã chiết khấu chính/Quý vẫn áp dụng CHUNG cho mọi Nhóm hàng như bình thường — nếu có Nhóm hàng KHÔNG thuộc diện hỗ trợ của chính sách bù này (VD Casumina nhóm 12/NPP PCR Advenza-Milestar), khai vào ô <b>"Nhóm hàng LOẠI TRỪ khỏi chính sách bù"</b> ngay trong form cấu hình — hệ thống tự loại các mã hàng thuộc nhóm đó ra khỏi số tiền bù, không cần tách riêng Mã chiết khấu/Mã doanh thu khác.
+      <p style="font-size:13px;color:var(--slate-600)">Kiểu 1 và 2 đọc lại báo cáo THÁNG <b>đã lưu</b> (REPORT_CKTH) — cần tính và lưu đủ các tháng liên quan (Bước 9) trước, hoặc dùng nút <b>"Tự động tính & lưu cho các tháng đã chọn"</b> để làm 1 lần cho tất cả.</p>
+      <div class="section-note" style="border-color:var(--gold);color:#8a6a1a;background:var(--gold-soft)">Cần ngưỡng "đạt tháng" khác mã CK tháng đang trả tiền thật? Tạo 1 "mã cổng" (Tỷ lệ CK = 0, %KH Min = ngưỡng cần) rồi liên kết dòng lũy kế vào mã cổng đó thay vì mã đang trả tiền.</div>
+
+      <div class="section-note" style="margin-top:14px;border-color:var(--gold);color:#8a6a1a;background:var(--gold-soft)"><b>Kiểu 3 — Bù CK tháng theo Quý</b> hoạt động thế nào (theo QĐ hỗ trợ Casumina cho NPP/ĐL lốp ô tô):</div>
+      <div class="flow-diag" style="margin:8px 0 10px">
+        <div class="flow-box">Bấm "Tính chiết khấu bổ sung" → từng tháng đã chọn được tính LẠI ngay từ Sổ chi tiết mua hàng (không cần đã lưu báo cáo tháng trước, không "quay lui" sửa số cũ)</div>
+        <div class="flow-down">↓ Tháng đó có TỰ đạt kế hoạch riêng của nó không?</div>
+        <div class="flow-branch">
+          <div class="col"><div class="lbl">Tháng TỰ đạt</div><div class="flow-box emerald">Không cần bù — CK tháng vẫn tính như bình thường</div></div>
+          <div class="col"><div class="lbl">Tháng KHÔNG đạt, Quý chứa tháng đó ĐẠT ≥100% KH</div><div class="flow-box gold">ĐƯỢC BÙ = % của bậc QUÝ đã đạt × Doanh số THẬT của chính THÁNG đó</div></div>
+          <div class="col"><div class="lbl">Tháng KHÔNG đạt, Quý cũng CHƯA đạt 100% KH</div><div class="flow-box red">0đ — không đủ điều kiện bù</div></div>
+        </div>
       </div>
+      <p style="font-size:13px;color:var(--slate-600)">Cấu hình (chỉ 2 bước):</p>
+      <ol style="font-size:13px;color:var(--slate-600);padding-left:18px;margin:0 0 10px">
+        <li style="margin-bottom:6px">Chọn <b>"Mã chiết khấu Quý liên kết"</b> — 1 Mã chiết khấu khác, cùng phạm vi mã hàng, Thời điểm chiết khấu = Quý (hệ thống không tự dò, phải chọn đúng tay).</li>
+        <li>Nếu chương trình bao phủ cả Nhóm hàng KHÔNG thuộc diện hỗ trợ (VD Casumina nhóm 12/NPP PCR Advenza-Milestar), khai vào <b>"Nhóm hàng LOẠI TRỪ khỏi chính sách bù"</b> — hệ thống tự bỏ các mã hàng thuộc nhóm đó ra khỏi số tiền bù, mã chiết khấu chính/Quý không cần tách riêng gì cả.</li>
+      </ol>
     </div>
 
     <div class="card hd-step" id="hd-b9">
