@@ -1635,6 +1635,43 @@ function calcDiscountForProgram(prog, sl, dt, giaCongBoTB){
   const tl = Number(prog.tl_ck||0)/100;
   return calcAmountByHt_(prog.ht_chietkhau, sl, dt, giaCongBoTB, tl);
 }
+// THEO CHÍNH SÁCH HỖ TRỢ CASUMINA (QĐ hỗ trợ chi bù CK hoàn thành KH tháng cho NPP lốp ô tô, không áp
+// dụng Casumina nhóm 12): nếu 1 Mã chiết khấu THÁNG không đạt bậc, nhưng Mã chiết khấu QUÝ cùng phạm vi
+// mã hàng (chọn thủ công, không tự dò) đạt ≥100% kế hoạch Quý, Casumina hỗ trợ tính bù CK tháng theo
+// ĐÚNG tỷ lệ CK ứng với %hoàn thành QUÝ thực tế (tra bậc điều kiện của chính Mã chiết khấu Quý), áp tỷ lệ
+// đó lên doanh số/sản lượng THẬT của THÁNG đang xét (không phải doanh số quý) — dùng lại calcDiscountForProgram()
+// (đã có sẵn, đúng công thức theo từng Hình thức chiết khấu) để không viết lại công thức tính tiền lần 2.
+// KHÔNG tự động áp dụng — người dùng phải chủ động chọn đúng Mã chiết khấu Quý rồi bấm tính (xem UI tại
+// renderReportResult), vì hệ thống hiện không có cách tự dò "1 cặp Tháng-Quý cùng thuộc 1 chính sách" an
+// toàn tuyệt đối, và chính sách này KHÔNG áp dụng cho Casumina nhóm 12 — người dùng tự xác nhận phạm vi.
+function computeQuyBuChietKhau_(monthRow, quyProgramId, monthFromISO){
+  const quyProg = (DB.programs||[]).find(p=>p.id===quyProgramId);
+  if(!quyProg) return { eligible:false, reason:'Không tìm thấy Mã chiết khấu Quý đã chọn.' };
+  const period = snapPeriodFromDate(monthFromISO, 'Quý');
+  if(!period) return { eligible:false, reason:'Không xác định được Quý chứa kỳ đang tính.' };
+  const ev = evaluateProgramForPeriod(quyProg, period.from, period.to, '');
+  if(ev.hoanthanh == null){
+    return {
+      eligible:false,
+      reason: 'Không tính được % hoàn thành kế hoạch Quý' + (ev.reason ? ` (${ev.reason})` : '') + '.',
+      quyFrom: period.from, quyTo: period.to
+    };
+  }
+  if(ev.hoanthanh < 100){
+    return {
+      eligible:false,
+      reason: `Quý chưa đạt 100% kế hoạch (mới đạt ${ev.hoanthanh.toFixed(1)}% KH quý) — không đủ điều kiện tính bù.`,
+      hoanthanhQuy: ev.hoanthanh, quyFrom: period.from, quyTo: period.to
+    };
+  }
+  const effProg = ev.effectiveProg || quyProg;
+  const tienckBu = calcDiscountForProgram(effProg, Number(monthRow.sl)||0, Number(monthRow.dt)||0, Number(monthRow.giaCongBoTB)||0);
+  return {
+    eligible: true, hoanthanhQuy: ev.hoanthanh, effProg, quyProg,
+    htChietkhau: effProg.ht_chietkhau, tyLeCk: effProg.tl_ck, dongiaCoDinh: effProg.dongia_codinh,
+    tienckBu, quyFrom: period.from, quyTo: period.to
+  };
+}
 // Kiểm tra điều kiện bậc Sản lượng (SL) và Doanh thu (DT) kết hợp theo AND/OR do chương trình khai báo:
 //  - AND (mặc định): PHẢI đạt CẢ 2 điều kiện SL và DT thì mới được tính chiết khấu.
 //  - OR: chỉ cần đạt 1 TRONG 2 điều kiện (SL hoặc DT) là được tính chiết khấu.
@@ -6373,6 +6410,9 @@ function runReport(){
   UI._reportFilters = { from, to, supplier, program, thoidiem };
   if(!from || !to){ toast('Vui lòng chọn khoảng ngày đối soát','err'); return; }
   UI.reportResult = { from, to, supplier, program, thoidiem, rows: computeReport(from, to, supplier, false, program, thoidiem) };
+  // Xoá kết quả "tính bù theo Quý" của lượt tính TRƯỚC (nếu có) — tránh hiện nhầm kết quả cũ của 1 Mã
+  // chiết khấu/kỳ khác khi người dùng đổi bộ lọc rồi bấm tính lại.
+  UI._tinhBuQuy = null;
   renderReport();
 }
 window.runReport = runReport;
@@ -7297,6 +7337,39 @@ function renderReportResult(){
         </div>
       </td></tr>` : '';
 
+    // THEO CHÍNH SÁCH HỖ TRỢ CASUMINA (xem computeQuyBuChietKhau_): chỉ hiện khi đang xem ĐÚNG 1 Mã chiết
+    // khấu cụ thể (program đã chọn ở bộ lọc, không phải "Tất cả chương trình") VÀ mã đó CHƯA ĐẠT bậc — lúc
+    // này mới có ý nghĩa "tính bù thay thế 0đ". Người dùng tự chọn đúng Mã chiết khấu Quý (không tự dò).
+    const tinhBuHtml = (program && r.program && !r.dat) ? (() => {
+      const quyOptions = (DB.programs||[]).filter(p=>p.thoidiem_ck==='Quý').sort((a,b)=>String(a.ma_chietkhau||'').localeCompare(String(b.ma_chietkhau||'')));
+      const state = UI._tinhBuQuy || {};
+      const selectedQuyId = state.quyProgramId || '';
+      const result = state.result || null;
+      let resultHtml = '';
+      if(result){
+        resultHtml = result.eligible
+          ? `<div class="hint" style="color:var(--emerald-dark);margin-top:6px">✓ Quý ${esc(fmtDate(result.quyFrom))}–${esc(fmtDate(result.quyTo))} đạt ${fmtPct(result.hoanthanhQuy)} KH — tính bù theo tỷ lệ của Mã chiết khấu Quý "${esc(result.quyProg.ma_chietkhau||result.quyProg.id||'')}": <b>${fmtVND(result.tienckBu)}</b></div>`
+          : `<div class="hint" style="color:var(--red);margin-top:6px">✗ ${esc(result.reason||'Không đủ điều kiện tính bù.')}</div>`;
+      }
+      return `
+      <tr><td colspan="14" style="padding:0;background:#fffbea">
+        <div style="padding:10px 16px">
+          <div class="hint" style="margin-bottom:6px">
+            <b>Chính sách hỗ trợ tính bù CK tháng theo Quý</b> (áp dụng NPP/ĐL lốp ô tô — <u>không</u> áp dụng cho Casumina nhóm 12/NPP PCR Advenza-Milestar):
+            nếu Quý Casumina giao đạt ≥100% kế hoạch, chọn đúng Mã chiết khấu Quý cùng phạm vi mã hàng với mã Tháng này rồi bấm "Tính bù".
+          </div>
+          <div class="btn-row">
+            <select id="tinhBuQuySelect_${esc(r.key)}" style="min-width:280px">
+              <option value="">— Chọn Mã chiết khấu Quý —</option>
+              ${quyOptions.map(p=>`<option value="${esc(p.id)}" ${selectedQuyId===p.id?'selected':''}>${esc(p.ma_chietkhau||p.id)}</option>`).join('')}
+            </select>
+            <button class="btn btn-sm" onclick="runTinhBuQuy('${esc(r.key)}')">Tính bù</button>
+          </div>
+          ${resultHtml}
+        </div>
+      </td></tr>`;
+    })() : '';
+
     const khMin = r.program && r.program.pct_kh_min!=null && r.program.pct_kh_min!=='' ? fmtPct(r.program.pct_kh_min) : '—';
     const khMax = r.program && r.program.pct_kh_max!=null && r.program.pct_kh_max!=='' && Number(r.program.pct_kh_max)!==0 ? fmtPct(r.program.pct_kh_max) : '—';
 
@@ -7316,7 +7389,7 @@ function renderReportResult(){
       <td class="num mono">${r.dtkh ? fmtPct(r.hoanthanh) : '—'}${dtkhSourceHint_(r.dtkhSource)}</td>
       <td class="num mono">${khMin}</td>
       <td class="num mono">${khMax}</td>
-    </tr>${detailHtml}`;
+    </tr>${detailHtml}${tinhBuHtml}`;
   }).join('');
 
   document.getElementById('reportResultWrap').innerHTML = kpiHtml + `
@@ -7335,6 +7408,20 @@ function renderReportResult(){
     </div>
   `;
 }
+// Handler cho nút "Tính bù" ở khối chính sách hỗ trợ Casumina (xem computeQuyBuChietKhau_ và UI tại
+// renderReportResult) — chỉ TÍNH VÀ HIỂN THỊ (không tự lưu vào REPORT_CKTH), người dùng tự quyết định
+// dùng số này ra sao (đối chiếu, báo cáo riêng...).
+function runTinhBuQuy(rowKey){
+  const sel = document.getElementById('tinhBuQuySelect_'+rowKey);
+  const quyProgramId = sel ? sel.value : '';
+  if(!quyProgramId){ toast('Vui lòng chọn Mã chiết khấu Quý trước khi tính bù', 'err'); return; }
+  const r = ((UI.reportResult && UI.reportResult.rows) || []).find(x=>x.key===rowKey);
+  if(!r){ toast('Không tìm thấy dòng đang tính — vui lòng tính chiết khấu lại rồi thử lại', 'err'); return; }
+  const result = computeQuyBuChietKhau_(r, quyProgramId, UI.reportResult.from);
+  UI._tinhBuQuy = { quyProgramId, result };
+  renderReportResult();
+}
+window.runTinhBuQuy = runTinhBuQuy;
 
 /* ============================ BẢNG CHIẾT KHẤU TẠM TÍNH THEO THÁNG ============================ */
 // MỚI: khác với "Tính chiết khấu" (renderReport, tính CHÍNH THỨC cho đúng 1 kỳ ĐÃ CHỌN, dùng để lưu báo
