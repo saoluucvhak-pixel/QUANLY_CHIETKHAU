@@ -231,17 +231,28 @@ function writeRowsEfficient_(sh, headers, values) {
     sh.getRange(1, newColCount + 1, Math.max(newRowCount + 1, 1), oldLastCol - newColCount).clearContent();
   }
 }
+// TỐI ƯU TỐC ĐỘ TẢI (phát hiện khi rà soát báo cáo "tải rất chậm"): Google Sheets giữ lại rất nhiều
+// "hàng trống ma" ở cuối sheet (từng có nội dung/định dạng, đã xoá nhưng Sheet vẫn tính vào
+// getDataRange()/getLastRow()) — kiểm chứng thực tế trên dữ liệu người dùng: CHUONGTRINHCHIETKHAU có
+// 695 dòng nhưng chỉ 11 dòng có dữ liệu thật, DM_MHCK 999 dòng nhưng chỉ 391 dòng thật, DM_QUYCACH 999
+// dòng nhưng chỉ ~9 dòng thật. loadCoreData() gọi hàm này cho TOÀN BỘ danh mục NGAY KHI MỞ APP (không
+// tải lười/phân trang như Giá công bố/Mua hàng), nên trước đây các hàng trống ma này vẫn bị đọc,
+// sanitize, đóng gói JSON và truyền qua kênh RPC mỗi lần mở app — góp phần đáng kể vào cảm giác "tải
+// rất chậm". Nay bỏ qua hẳn các hàng trống hoàn toàn trước khi dựng đối tượng, giống đúng cách
+// readSheetChunk_()/readFilteredPurchaseRows_() bên dưới đã làm từ trước cho Giá công bố/Mua hàng.
 function readSheetRows_(sheetName) {
   const ss = SpreadsheetApp.getActive();
   const sh = getOrCreateSheet_(ss, sheetName);
   const data = sh.getDataRange().getValues();
   if (data.length <= 1) return [];
   const headers = data[0];
-  return data.slice(1).map(r => {
-    let obj = {};
-    headers.forEach((h, i) => obj[h] = sanitizeCellValue_(r[i], h));
-    return obj;
-  });
+  return data.slice(1)
+    .filter(r => r.some(c => String(c).trim() !== ''))
+    .map(r => {
+      let obj = {};
+      headers.forEach((h, i) => obj[h] = sanitizeCellValue_(r[i], h));
+      return obj;
+    });
 }
 function loadCoreData() {
   const result = { catalog: {}, programs: [], programsLuyKe: [], reportCKTH: [], reportCKCT: [], chuongtrinh: [], dieukien: [], doanhthu: [], kehoach: [], kehoachChiTiet: [] };
