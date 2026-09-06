@@ -1099,6 +1099,229 @@ function esc_(s) {
   });
 }
 
+// ============================ BẢO TRÌ HỆ THỐNG ============================
+// THEO YÊU CẦU: bộ 3 công cụ bảo trì, xây dựng trực tiếp từ các lớp lỗi ÂM THẦM đã thực tế phát hiện khi
+// rà soát dữ liệu thật của người dùng trong phiên làm việc này (dim_nhomkh của Mã chiết khấu bị lệch độ
+// chính xác số so với Mã doanh thu liên kết — nghi do cell từng bị Google Sheets tự đổi định dạng
+// ngày/giờ rồi sanitizeCellValue_() quy đổi ngược qua serialFromDate_() sinh ra phần thập phân dư, xem
+// giải thích tại 2 hàm đó — khiến dimsMatch() so KHỚP CHUỖI tuyệt đối trả về "không khớp" cho TOÀN BỘ mã
+// hàng, ra 0đ chiết khấu không cảnh báo):
+//  (1) Kiểm tra sức khỏe dữ liệu — quét toàn bộ PROGRAMS/DOANHTHU/CHUONGTRINH/MHCK/PURCHASES, phát hiện
+//      SỚM đúng lớp lỗi trên (và vài lớp lỗi cấu hình phổ biến khác) thay vì phải đợi báo cáo ra 0đ.
+//  (2) Sao lưu các sheet cấu hình quan trọng (bản sao kèm ngày giờ) + tự dọn bớt bản backup cũ.
+//  (3) Trigger chạy hằng ngày gọi cả 2 việc trên, gửi email tóm tắt cho người triển khai nếu có vấn đề.
+// Cả 3 đều CHỈ ĐỌC (trừ việc tạo/xoá sheet backup ở mục 2) — không đụng tới dữ liệu nghiệp vụ đang có.
+
+const MAINTENANCE_BACKUP_KEEP_ = 10; // giữ tối đa 10 bản sao lưu gần nhất CHO MỖI sheet cấu hình
+// Các sheet cấu hình "ít dòng, dễ sửa tay, hậu quả nặng nếu hỏng" — KHÔNG gồm PURCHASES/GIACONGBO/
+// REPORT_CKTH/REPORT_CKCT (quá nhiều dòng, đã có "Xuất Excel" riêng, sao lưu ở đây tốn thời gian không
+// cần thiết cho mục tiêu "cấu hình chính sách chiết khấu").
+const MAINTENANCE_BACKUP_SHEET_KEYS_ = ['PROGRAMS', 'DIEUKIEN', 'DOANHTHU', 'KEHOACH', 'KEHOACH_CHITIET', 'CHUONGTRINH', 'LUYKE', 'MHCK'];
+const MAINTENANCE_STALE_DAYS_ = 90; // "không phát sinh mua hàng khớp phạm vi trong X ngày gần nhất" khi xét mã chiết khấu nghi ngờ
+
+function pad2_(n) { return String(n).length < 2 ? '0' + n : String(n); }
+function backupTimestamp_(d) {
+  d = d || new Date();
+  return d.getFullYear() + pad2_(d.getMonth() + 1) + pad2_(d.getDate()) + '_' + pad2_(d.getHours()) + pad2_(d.getMinutes());
+}
+
+// ---- (2) Sao lưu + dọn dẹp ----
+// Copy từng sheet cấu hình sang 1 sheet mới "<TÊN>_BACKUP_<yyyyMMdd_HHmm>" (định dạng timestamp cố định
+// độ rộng nên so chuỗi = so thời gian, dùng được để sắp xếp mới→cũ mà không cần parse ngày), rồi xoá bớt
+// các bản backup CŨ NHẤT của CHÍNH sheet đó nếu vượt quá MAINTENANCE_BACKUP_KEEP_ bản.
+function backupKeyConfigSheets_() {
+  const ss = SpreadsheetApp.getActive();
+  const ts = backupTimestamp_();
+  const created = [];
+  MAINTENANCE_BACKUP_SHEET_KEYS_.forEach(key => {
+    const name = SHEETS[key];
+    const sh = ss.getSheetByName(name);
+    if (!sh || sh.getLastRow() <= 1) return; // sheet trống hoặc chưa tồn tại — không cần sao lưu
+    const backupName = name + '_BACKUP_' + ts;
+    const copy = sh.copyTo(ss);
+    copy.setName(backupName);
+    copy.hideSheet();
+    created.push(backupName);
+    pruneOldBackups_(ss, name);
+  });
+  return created;
+}
+function pruneOldBackups_(ss, baseName) {
+  const prefix = baseName + '_BACKUP_';
+  const candidates = ss.getSheets()
+    .filter(sh => sh.getName().indexOf(prefix) === 0)
+    .sort((a, b) => a.getName() < b.getName() ? 1 : -1); // tên có timestamp tăng dần -> mới nhất đứng trước
+  candidates.slice(MAINTENANCE_BACKUP_KEEP_).forEach(sh => ss.deleteSheet(sh));
+}
+// Gọi được trực tiếp từ nút "Sao lưu ngay" trên web.
+function runBackupNow() {
+  const created = backupKeyConfigSheets_();
+  return { created, count: created.length };
+}
+
+// ---- (1) Kiểm tra sức khỏe dữ liệu ----
+// Đọc THẲNG từ Sheet qua readSheetRows_() (không phụ thuộc dữ liệu Frontend đã tải) — chạy được cả từ
+// trigger (không có trình duyệt) lẫn khi người dùng bấm nút trên web.
+const HEALTHCHECK_DIM_KEYS_ = ['thuonghieu', 'nhomkh', 'loaisp', 'dactinh', 'congdung', 'quycach'];
+function healthCheckDimsMatchLoose_(itemDims, ruleDims) {
+  return HEALTHCHECK_DIM_KEYS_.every(k => {
+    const rv = String(ruleDims[k] == null ? '' : ruleDims[k]).trim().toUpperCase();
+    const iv = String(itemDims[k] == null ? '' : itemDims[k]).trim().toUpperCase();
+    if (rv === 'NO' || rv === '') return true;
+    if (rv.indexOf(',') > -1) return rv.split(',').map(x => x.trim()).indexOf(iv) > -1;
+    if (iv === rv) return true;
+    const rn = Number(rv), inum = Number(iv);
+    return Number.isFinite(rn) && Number.isFinite(inum) && Math.round(rn) === Math.round(inum);
+  });
+}
+function runDataHealthCheck_() {
+  const programs = readSheetRows_(SHEETS.PROGRAMS);
+  const doanhthu = readSheetRows_(SHEETS.DOANHTHU);
+  const chuongtrinh = readSheetRows_(SHEETS.CHUONGTRINH);
+  const mhck = readSheetRows_(SHEETS.MHCK);
+  const purchases = readSheetRows_(SHEETS.PURCHASES);
+
+  const issues = [];
+  function addIssue(muc, mucdo, doituong, chitiet) {
+    issues.push({ muc: muc, mucdo: mucdo, doituong: doituong, chitiet: chitiet });
+  }
+
+  const doanhthuById = {}; doanhthu.forEach(d => { if (d.id) doanhthuById[d.id] = d; });
+  const chuongtrinhById = {}; chuongtrinh.forEach(c => { if (c.id) chuongtrinhById[c.id] = c; });
+
+  // (a) Trùng Mã chiết khấu / (b) liên kết Chương trình cha bị đứt / (c) dim_nhomkh lệch số
+  const seenMaChietKhau = {};
+  programs.forEach(p => {
+    if (p.ma_chietkhau) {
+      if (seenMaChietKhau[p.ma_chietkhau]) {
+        addIssue('Trùng Mã chiết khấu', 'error', p.ma_chietkhau,
+          'Có nhiều hơn 1 dòng (id="' + seenMaChietKhau[p.ma_chietkhau] + '" và id="' + p.id + '") cùng dùng Mã chiết khấu "' + p.ma_chietkhau + '" — dễ nhầm lẫn khi chọn ở màn Tính chiết khấu.');
+      } else {
+        seenMaChietKhau[p.ma_chietkhau] = p.id;
+      }
+    }
+    if (p.chuongtrinh_id && !chuongtrinhById[p.chuongtrinh_id]) {
+      addIssue('Liên kết Chương trình bị đứt', 'error', p.ma_chietkhau || p.id,
+        'chuongtrinh_id="' + p.chuongtrinh_id + '" không khớp Chương trình nào trong Danh mục chương trình — hiệu lực Từ ngày/Đến ngày có thể không tự cập nhật đúng theo chương trình cha.');
+    }
+    const dt = p.ma_doanhthu ? doanhthuById[p.ma_doanhthu] : null;
+    if (dt) {
+      HEALTHCHECK_DIM_KEYS_.forEach(k => {
+        const pv = p['dim_' + k], dv = dt['dim_' + k];
+        if (pv == null || dv == null || String(pv) === String(dv)) return; // trống hoặc khớp hệt — không có vấn đề
+        const pn = Number(pv), dn = Number(dv);
+        const numericClose = Number.isFinite(pn) && Number.isFinite(dn) && Math.round(pn) === Math.round(dn);
+        addIssue(numericClose ? 'Dim lệch độ chính xác số (đã tự khắc phục lúc chạy)' : 'Dim KHÔNG khớp Mã doanh thu liên kết',
+          numericClose ? 'warn' : 'error', p.ma_chietkhau || p.id,
+          'dim_' + k + ' = "' + pv + '" trên Mã chiết khấu ' + (numericClose ? 'khác' : 'KHÁC HẲN') + ' "' + dv + '" trên Mã doanh thu "' + p.ma_doanhthu + '"' +
+          (numericClose ? ' (chỉ lệch phần thập phân, nghi do cell từng bị đổi định dạng ngày/giờ trên Sheet — app đã tự nhận đúng nhóm nên KHÔNG ảnh hưởng số tiền, nhưng nên sửa lại cho sạch dữ liệu: mở Mã chiết khấu, chọn lại đúng Mã doanh thu rồi lưu).'
+            : ' — có thể khiến mã này KHÔNG khớp được mã hàng nào (0đ chiết khấu mà không cảnh báo gì).'));
+      });
+      // dim_nhomkh vốn LUÔN là mã số nguyên (VD 231013) — có phần thập phân là dấu hiệu rõ ràng của lỗi
+      // định dạng ô, kiểm tra ĐỘC LẬP (không cần đối chiếu với Mã doanh thu) để bắt được cả trường hợp
+      // dim_nhomkh của CHÍNH Mã doanh thu cũng bị lỗi (khi đó phép so ở trên vẫn "khớp" vì cả 2 cùng sai).
+      [['dim_nhomkh (Mã chiết khấu)', p.dim_nhomkh], ['dim_nhomkh (Mã doanh thu ' + p.ma_doanhthu + ')', dt.dim_nhomkh]].forEach(pair => {
+        const v = Number(pair[1]);
+        if (Number.isFinite(v) && Math.abs(v - Math.round(v)) > 1e-6) {
+          addIssue('Mã Nhóm hàng có phần thập phân bất thường', 'warn', p.ma_chietkhau || p.id,
+            pair[0] + ' = ' + pair[1] + ' — mã Nhóm hàng luôn phải là số nguyên, phần thập phân dư (' + (v - Math.round(v)).toFixed(6) + ') nghi do lỗi định dạng ô trên Sheet.');
+        }
+      });
+    }
+    // (d) SL/DT Min-Max/Tỷ lệ CK không parse được thành số hợp lệ (VD lỗi "#VALUE!"/"#REF!" từ Excel) —
+    // app đã tự coi các giá trị này là "không giới hạn" (xem inBracket()) nên KHÔNG chặn tính toán, chỉ
+    // là dấu hiệu dữ liệu bẩn nên cảnh báo để người dùng xác nhận lại đúng ý (0 thật hay không giới hạn).
+    ['sl_min', 'sl_max', 'dt_min', 'dt_max', 'tl_ck'].forEach(f => {
+      const v = p[f];
+      if (v === '' || v == null) return;
+      if (!Number.isFinite(Number(v))) {
+        addIssue('Giá trị số bị lưu sai định dạng', 'warn', p.ma_chietkhau || p.id,
+          'Trường "' + f + '" = "' + v + '" không phải số hợp lệ — app tạm coi như "không giới hạn"/0, nên vào Mã chiết khấu sửa lại đúng giá trị mong muốn.');
+      }
+    });
+  });
+
+  // (e) Mã chiết khấu ĐANG HIỆU LỰC nhưng KHÔNG khớp mã hàng nào phát sinh mua trong N ngày gần nhất —
+  // dấu hiệu cấu hình dims sai/lệch (đúng lớp lỗi đã gặp thực tế), hoặc đơn giản mặt hàng đã ngừng bán.
+  const todayMs = Date.now();
+  const staleMs = MAINTENANCE_STALE_DAYS_ * 24 * 3600 * 1000;
+  const mhckByCode = {}; mhck.forEach(m => { if (m.mamh) mhckByCode[String(m.mamh).trim().toUpperCase()] = m; });
+  const recentDimsSeen = [];
+  purchases.forEach(p => {
+    if (!p.ngay || !p.mahang) return;
+    const d = new Date(p.ngay);
+    if (isNaN(d.getTime()) || (todayMs - d.getTime()) > staleMs || d.getTime() > todayMs) return;
+    const rec = mhckByCode[String(p.mahang).trim().toUpperCase()];
+    if (!rec) return;
+    recentDimsSeen.push({ thuonghieu: rec.thuonghieu, nhomkh: rec.nhomkh, loaisp: rec.loaisp, dactinh: rec.dactinh, congdung: rec.congdung, quycach: rec.quycach });
+  });
+  programs.forEach(p => {
+    const hieuluctu = p.hieuluctu ? new Date(p.hieuluctu) : null;
+    const hieulucden = p.hieulucden ? new Date(p.hieulucden) : null;
+    const active = (!hieulucden || isNaN(hieulucden.getTime()) || hieulucden.getTime() >= todayMs) &&
+                   (!hieuluctu || isNaN(hieuluctu.getTime()) || hieuluctu.getTime() <= todayMs);
+    if (!active) return;
+    const pd = { thuonghieu: p.dim_thuonghieu, nhomkh: p.dim_nhomkh, loaisp: p.dim_loaisp, dactinh: p.dim_dactinh, congdung: p.dim_congdung, quycach: p.dim_quycach };
+    const matched = recentDimsSeen.some(id => healthCheckDimsMatchLoose_(id, pd));
+    if (!matched) {
+      addIssue('Mã chiết khấu không khớp mã hàng nào gần đây', 'warn', p.ma_chietkhau || p.id,
+        'Đang trong hiệu lực nhưng không có mã hàng nào khớp phạm vi (Thương hiệu/Nhóm hàng/Loại SP/Đặc tính/Công dụng/Quy cách) phát sinh mua trong ' + MAINTENANCE_STALE_DAYS_ + ' ngày gần nhất — kiểm tra lại cấu hình dims, hoặc xác nhận mặt hàng đã ngừng mua.');
+    }
+  });
+
+  const summary = {
+    total: issues.length,
+    error: issues.filter(x => x.mucdo === 'error').length,
+    warn: issues.filter(x => x.mucdo === 'warn').length,
+    checkedAt: new Date().toISOString()
+  };
+  return { summary: summary, issues: issues };
+}
+// Gọi được trực tiếp từ nút "Quét sức khỏe dữ liệu" trên web.
+function getDataHealthReport() {
+  return runDataHealthCheck_();
+}
+
+// ---- (3) Trigger hằng ngày + email báo cáo ----
+function dailyMaintenanceJob_() {
+  const backedUp = backupKeyConfigSheets_();
+  const report = runDataHealthCheck_();
+  if (report.summary.total > 0) sendMaintenanceEmail_(report, backedUp);
+  return report;
+}
+function sendMaintenanceEmail_(report, backedUp) {
+  let email = '';
+  try { email = Session.getEffectiveUser().getEmail(); } catch (e) { email = ''; }
+  if (!email) return;
+  const lines = [];
+  lines.push('Kiểm tra sức khỏe dữ liệu tự động — ' + new Date().toLocaleString('vi-VN'));
+  lines.push('Tổng: ' + report.summary.total + ' vấn đề (' + report.summary.error + ' lỗi, ' + report.summary.warn + ' cảnh báo)');
+  lines.push('');
+  report.issues.slice(0, 50).forEach(x => {
+    lines.push('[' + (x.mucdo === 'error' ? 'LỖI' : 'CẢNH BÁO') + '] ' + x.muc + ' — ' + x.doituong);
+    lines.push('  ' + x.chitiet);
+  });
+  if (report.issues.length > 50) lines.push('... và ' + (report.issues.length - 50) + ' vấn đề khác — xem đầy đủ trên web, mục Bảo trì hệ thống.');
+  lines.push('');
+  lines.push('Đã sao lưu ' + backedUp.length + ' sheet: ' + (backedUp.join(', ') || '(không có sheet nào cần sao lưu)'));
+  MailApp.sendEmail(email, '[Chiết khấu NCC] Báo cáo bảo trì tự động — ' + report.summary.total + ' vấn đề cần xem', lines.join('\n'));
+}
+// Cài đặt/gỡ trigger chạy hằng ngày lúc 2h sáng — gọi từ nút bấm trên web (yêu cầu cấp quyền 1 lần).
+function installDailyMaintenanceTrigger() {
+  uninstallDailyMaintenanceTrigger(); // tránh tạo trùng nếu bấm nhiều lần
+  ScriptApp.newTrigger('dailyMaintenanceJob_').timeBased().everyDays(1).atHour(2).create();
+  return true;
+}
+function uninstallDailyMaintenanceTrigger() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'dailyMaintenanceJob_') ScriptApp.deleteTrigger(t);
+  });
+  return true;
+}
+function isDailyMaintenanceTriggerInstalled() {
+  return ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'dailyMaintenanceJob_');
+}
+
 const HD_TOC_QUYTRINH_ = [
   { lbl: 'I. Dữ liệu nền', items: [
     ['hd-b1', '1. Danh mục nhóm chiết khấu'], ['hd-b2', '2. Giá công bố NCC'], ['hd-b3', '3. Sổ chi tiết mua hàng']

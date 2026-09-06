@@ -1956,7 +1956,8 @@ const ICON = {
   layers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg>',
   plan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18"/><path d="M8 14.5l2.5 2.5L16 12"/></svg>',
   copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
-  help:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 2-3 4"/><path d="M12 17h.01"/></svg>'
+  help:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 2-3 4"/><path d="M12 17h.01"/></svg>',
+  wrench:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 005.4-5.4l-2.8 2.8-2-2 2.8-2.8z"/></svg>'
 };
 
 function renderShell(){
@@ -1986,6 +1987,7 @@ function renderShell(){
     { label:'Trợ giúp', items: [
       {id:'huongdan', ic:ICON.help, label:'Hướng dẫn sử dụng'},
       {id:'mauimport', ic:ICON.download, label:'Mẫu import Excel'},
+      {id:'baotri', ic:ICON.wrench, label:'Bảo trì hệ thống'},
     ]},
   ];
   const nav = navGroups.flatMap(g=>g.items); // vẫn giữ mảng phẳng để phần code khác (nếu tham chiếu) không bị vỡ
@@ -2005,6 +2007,7 @@ function renderShell(){
     baocao:['Báo cáo chiết khấu','Phân tích tổng hợp từ dữ liệu đã lưu (REPORT_CKTH/CKCT): theo mặt hàng, theo mã chiết khấu, bảng hạch toán, đối chiếu nhiều kỳ liền kề, tra cứu chiết khấu theo 1 mặt hàng'],
     huongdan:['Hướng dẫn sử dụng','Đi từng bước từ khai báo danh mục nền đến cấu hình chương trình và tính chiết khấu hằng kỳ'],
     mauimport:['Mẫu import Excel','Tải file mẫu Excel dùng chung cho mọi màn hình "Tải file Excel" trong app'],
+    baotri:['Bảo trì hệ thống','Quét sức khỏe dữ liệu, sao lưu sheet cấu hình, và bật kiểm tra tự động hằng ngày'],
   };
   // SỬA LỖI: nếu UI.tab không khớp đúng key nào trong titles (VD do bản JS cũ còn lưu trong bộ nhớ
   // trình duyệt chưa nạp lại, hoặc tab id gõ sai) — trước đây "titles[UI.tab][0]" sẽ crash TOÀN BỘ
@@ -2090,6 +2093,7 @@ async function routeContent(){
   }
   else if(UI.tab==='huongdan') renderHuongDan();
   else if(UI.tab==='mauimport') renderMauImport();
+  else if(UI.tab==='baotri') renderBaoTri();
 }
 
 /* ---------------------------- catalog helpers ---------------------------- */
@@ -2942,6 +2946,129 @@ function renderMauImport(){
   document.getElementById('content').innerHTML = content;
 }
 window.renderMauImport = renderMauImport;
+
+/* ============================ BẢO TRÌ HỆ THỐNG ============================ */
+// THEO YÊU CẦU: bộ 3 công cụ bảo trì, xây trực tiếp từ lớp lỗi ÂM THẦM đã thực tế phát hiện khi rà soát
+// dữ liệu thật của người dùng trong phiên này (dim_nhomkh của Mã chiết khấu lệch độ chính xác số so với
+// Mã doanh thu liên kết, gây 0đ chiết khấu không cảnh báo). Cả 3 hàm server tương ứng (getDataHealthReport/
+// runBackupNow/installDailyMaintenanceTrigger-uninstallDailyMaintenanceTrigger-isDailyMaintenanceTriggerInstalled)
+// đọc/ghi THẲNG Google Sheet, không phụ thuộc dữ liệu Frontend đã tải — xem Code.gs.
+function renderBaoTri(){
+  document.getElementById('topbarActions').innerHTML = '';
+  document.getElementById('content').innerHTML = `
+    <div class="section-note" style="border-color:var(--gold);color:#8a6a1a;background:var(--gold-soft)">Bộ công cụ này xây trực tiếp từ 1 lỗi thật đã gặp: Mã chiết khấu lệch độ chính xác số so với Mã doanh thu liên kết (VD "231013.009028" thay vì "231013") khiến 0đ chiết khấu mà không cảnh báo gì. Chạy "Quét sức khỏe dữ liệu" định kỳ để phát hiện SỚM đúng lớp lỗi này (và vài lỗi cấu hình phổ biến khác), thay vì phải đợi báo cáo ra sai số mới biết.</div>
+    <div class="card">
+      <div class="card-head"><div><h2>Sức khỏe dữ liệu</h2><div class="hint">Quét Mã chiết khấu / Mã doanh thu / Danh mục chương trình / Danh mục nhóm CK / Sổ mua hàng — đọc thẳng từ Google Sheet, không cần tải dữ liệu lên trình duyệt trước</div></div></div>
+      <div class="btn-row" style="margin-bottom:12px">
+        <button class="btn btn-primary btn-sm" id="btnRunHealthCheck" onclick="runHealthCheckUI()">${ICON.wrench} Quét sức khỏe dữ liệu</button>
+      </div>
+      <div id="healthCheckResultWrap"><div class="hint">Chưa quét lần nào trong phiên này — bấm nút ở trên để bắt đầu.</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h2>Sao lưu sheet cấu hình</h2><div class="hint">Sao lưu Mã chiết khấu, Bậc điều kiện, Mã doanh thu, Kế hoạch, Chương trình, Chiết khấu lũy kế, Danh mục nhóm CK — mỗi sheet tự giữ lại 10 bản gần nhất, bản cũ hơn tự động bị xoá; sheet backup được ẩn khỏi tầm nhìn thường (bấm "Hiện tất cả trang tính" trong Google Sheet nếu cần mở lại)</div></div></div>
+      <div class="btn-row">
+        <button class="btn btn-sm" id="btnRunBackup" onclick="runBackupNowUI()">${ICON.upload} Sao lưu ngay</button>
+      </div>
+      <div id="backupResultWrap" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h2>Kiểm tra tự động hằng ngày</h2><div class="hint">Tự sao lưu + quét sức khỏe dữ liệu lúc 2h sáng mỗi ngày, gửi email tóm tắt cho bạn — CHỈ gửi khi phát hiện vấn đề, không làm phiền khi mọi thứ vẫn ổn</div></div></div>
+      <div id="triggerStatusWrap"><div class="hint">Đang kiểm tra trạng thái...</div></div>
+    </div>
+  `;
+  refreshTriggerStatusUI();
+}
+function runHealthCheckUI(){
+  const btn = document.getElementById('btnRunHealthCheck');
+  const wrap = document.getElementById('healthCheckResultWrap');
+  btn.disabled = true; btn.innerText = 'Đang quét...';
+  wrap.innerHTML = '<div class="empty"><div class="big">🔄</div>Đang quét dữ liệu trên Sheet...</div>';
+  google.script.run
+    .withSuccessHandler((report)=>{
+      btn.disabled = false; btn.innerHTML = `${ICON.wrench} Quét sức khỏe dữ liệu`;
+      renderHealthCheckResult_(report);
+    })
+    .withFailureHandler((err)=>{
+      btn.disabled = false; btn.innerHTML = `${ICON.wrench} Quét sức khỏe dữ liệu`;
+      wrap.innerHTML = `<div class="empty">Lỗi khi quét: ${esc(err && err.message ? err.message : err)}</div>`;
+      toast('Quét sức khỏe dữ liệu thất bại: '+(err && err.message?err.message:err), 'err');
+    })
+    .getDataHealthReport();
+}
+function renderHealthCheckResult_(report){
+  const wrap = document.getElementById('healthCheckResultWrap');
+  if(!report || !report.issues || !report.issues.length){
+    const checkedAt = report && report.summary && report.summary.checkedAt ? new Date(report.summary.checkedAt).toLocaleString('vi-VN') : '';
+    wrap.innerHTML = `<div class="empty"><div class="big">✅</div>Không phát hiện vấn đề nào${checkedAt?(' (quét lúc '+esc(checkedAt)+')'):''}.</div>`;
+    return;
+  }
+  const rows = report.issues.map(x=>`
+    <tr>
+      <td><span class="tag ${x.mucdo==='error'?'tag-no':'tag-gold'}">${x.mucdo==='error'?'LỖI':'CẢNH BÁO'}</span></td>
+      <td>${esc(x.muc)}</td>
+      <td class="mono">${esc(x.doituong)}</td>
+      <td style="font-size:12.5px;color:var(--slate-600)">${esc(x.chitiet)}</td>
+    </tr>`).join('');
+  wrap.innerHTML = `
+    <div class="grid grid-3" style="margin-bottom:12px">
+      <div class="kpi"><div class="lbl">Tổng vấn đề</div><div class="val">${report.summary.total}</div></div>
+      <div class="kpi accent-gold"><div class="lbl">Cảnh báo</div><div class="val">${report.summary.warn}</div></div>
+      <div class="kpi" style="border-color:var(--red)"><div class="lbl">Lỗi</div><div class="val" style="color:var(--red)">${report.summary.error}</div></div>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Mức độ</th><th>Loại vấn đề</th><th>Đối tượng</th><th>Chi tiết</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  `;
+}
+function runBackupNowUI(){
+  const btn = document.getElementById('btnRunBackup');
+  const wrap = document.getElementById('backupResultWrap');
+  btn.disabled = true; btn.innerText = 'Đang sao lưu...';
+  google.script.run
+    .withSuccessHandler((res)=>{
+      btn.disabled = false; btn.innerHTML = `${ICON.upload} Sao lưu ngay`;
+      wrap.innerHTML = (res && res.count)
+        ? `<div class="section-note" style="border-color:var(--emerald);color:var(--emerald-dark)">Đã sao lưu ${res.count} sheet: ${res.created.map(x=>`<span class="tag mono">${esc(x)}</span>`).join(' ')}</div>`
+        : `<div class="hint">Không có sheet nào cần sao lưu (tất cả đang trống).</div>`;
+      toast('Đã sao lưu '+(res?res.count:0)+' sheet', 'ok');
+    })
+    .withFailureHandler((err)=>{
+      btn.disabled = false; btn.innerHTML = `${ICON.upload} Sao lưu ngay`;
+      toast('Sao lưu thất bại: '+(err && err.message?err.message:err), 'err');
+    })
+    .runBackupNow();
+}
+function refreshTriggerStatusUI(){
+  const wrap = document.getElementById('triggerStatusWrap');
+  google.script.run
+    .withSuccessHandler((installed)=>{
+      wrap.innerHTML = `
+        <div class="btn-row" style="align-items:center">
+          <span class="tag ${installed?'tag-ok':''}">${installed ? '✓ Đang bật' : 'Đang tắt'}</span>
+          <button class="btn btn-sm ${installed?'':'btn-primary'}" onclick="toggleDailyTriggerUI(${installed?'false':'true'})">${installed ? 'Tắt kiểm tra tự động' : 'Bật kiểm tra tự động'}</button>
+        </div>
+        ${installed ? '<div class="hint" style="margin-top:6px">Email báo cáo sẽ gửi tới địa chỉ Google đang chạy Apps Script (thường là chủ sở hữu file) — chỉ gửi khi phát hiện vấn đề.</div>' : ''}
+      `;
+    })
+    .withFailureHandler((err)=>{
+      wrap.innerHTML = `<div class="hint">Không kiểm tra được trạng thái: ${esc(err && err.message?err.message:err)}</div>`;
+    })
+    .isDailyMaintenanceTriggerInstalled();
+}
+function toggleDailyTriggerUI(turnOn){
+  const wrap = document.getElementById('triggerStatusWrap');
+  wrap.innerHTML = '<div class="hint">Đang xử lý...</div>';
+  const fn = turnOn ? 'installDailyMaintenanceTrigger' : 'uninstallDailyMaintenanceTrigger';
+  google.script.run
+    .withSuccessHandler(()=>{ toast(turnOn?'Đã bật kiểm tra tự động hằng ngày':'Đã tắt kiểm tra tự động', 'ok'); refreshTriggerStatusUI(); })
+    .withFailureHandler((err)=>{ toast('Thao tác thất bại: '+(err && err.message?err.message:err), 'err'); refreshTriggerStatusUI(); })
+    [fn]();
+}
+window.renderBaoTri = renderBaoTri;
+window.runHealthCheckUI = runHealthCheckUI;
+window.runBackupNowUI = runBackupNowUI;
+window.toggleDailyTriggerUI = toggleDailyTriggerUI;
 
 /* ============================ CATALOG ============================ */
 function renderCatalog(){
